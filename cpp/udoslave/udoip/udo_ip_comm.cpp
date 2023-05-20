@@ -50,74 +50,46 @@ TUdoIpComm::~TUdoIpComm()
 
 bool TUdoIpComm::Init()
 {
-	initialized = false;
+  initialized = false;
 
-	rqbuf = &udoip_rq_buffer[0];
-	rqbufsize = sizeof(udoip_rq_buffer);
+  rqbuf = &udoip_rq_buffer[0];
+  rqbufsize = sizeof(udoip_rq_buffer);
 
-	// initialize the ans_cache
+  // initialize the ans_cache
 
-	uint32_t offs = 0;
-	for (unsigned n = 0; n < UDOIP_ANSCACHE_NUM; ++n)
-	{
-		memset(&ans_cache[n], 0, sizeof(ans_cache[n]));
-		ans_cache[n].dataptr = &udoip_ans_cache_buffer[offs];
-		ans_cache[n].idx = n;
-		offs += UDOIP_MAX_RQ_SIZE;
-		ans_cache_lru_idx[n] = n;
-	}
+  uint32_t offs = 0;
+  for (unsigned n = 0; n < UDOIP_ANSCACHE_NUM; ++n)
+  {
+    memset(&ans_cache[n], 0, sizeof(ans_cache[n]));
+    ans_cache[n].dataptr = &udoip_ans_cache_buffer[offs];
+    ans_cache[n].idx = n;
+    offs += UDOIP_MAX_RQ_SIZE;
+    ans_cache_lru_idx[n] = n;
+  }
 
-	// Create UDP socket:
-	fdsocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	if (fdsocket < 0)
-	{
-		TRACE("UdoIpSlave: Error creating socket\n");
-		return false;
-	}
+  if (!UdpInit())
+  {
+    return false;
+  }
 
-	// Set port and IP:
-	server_addr.sin_family = AF_INET;
-	server_addr.sin_port = htons(port);
-	server_addr.sin_addr.s_addr = inet_addr("0.0.0.0");  // bind to all interfaces
+  // ok.
 
-	// set the socket non-blocking
-#ifdef WIN32
-  ioctlsocket(fdsocket, FIONBIO, &noBlock);
-#else
-  int flags = fcntl(fdsocket, F_GETFL, 0);
-  fcntl(fdsocket, F_SETFL, flags | O_NONBLOCK);
-#endif
-
-	// Bind to the set port and IP:
-	if (bind(fdsocket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0)
-	{
-		TRACE("UdoIpSlave: bind error (is another slave already running?)\n");
-		return false;
-	}
-
-	// ok.
-
-	initialized = true;
-	return true;
+  initialized = true;
+  return true;
 }
 
 void TUdoIpComm::Run()
 {
-	// Receive client's message:
-	int r = recvfrom(fdsocket, rqbuf, rqbufsize, 0, (struct sockaddr*)&client_addr, &client_struct_length);
-	if (r > 0)
-	{
-		// something was received.
+  // Receive client's message:
+  int r = UdpRecv(); // fills the mcurq on success
+  if (r > 0)
+  {
+    // something was received, mcurq is prepared
 
-		mucrq.srcip = *(uint32_t *)&client_addr.sin_addr;
-		mucrq.srcport = ntohs(client_addr.sin_port);
-		mucrq.datalen = r;
-		mucrq.dataptr = rqbuf;
+    ProcessUdpRequest(&mucrq);
 
-		ProcessUdpRequest(&mucrq);
-
-		last_request_mstime = mscounter();
-	}
+    last_request_mstime = mscounter();
+  }
 }
 
 void TUdoIpComm::ProcessUdpRequest(TUdoIpRequest * ucrq)
@@ -143,11 +115,11 @@ void TUdoIpComm::ProcessUdpRequest(TUdoIpRequest * ucrq)
 	{
 		//TRACE(" (sending cached answer)\n");
 		// send back the cached answer, avoid double execution
-		r = sendto(fdsocket, pansc->dataptr, pansc->datalen, 0, (struct sockaddr*)&client_addr, client_struct_length);
-		if (r <= 0)
-		{
-			TRACE("UdoIpSlave: error sending back the answer!\n");
-		}
+    r = UdpRespond(pansc->dataptr, pansc->datalen);
+    if (r <= 0)
+    {
+      TRACE("UdoIpSlave: error sending back the answer!\r\n");
+    }
 		return;
 	}
 
@@ -196,7 +168,7 @@ void TUdoIpComm::ProcessUdpRequest(TUdoIpRequest * ucrq)
 	pansc->datalen = mudorq.anslen + sizeof(TUdoIpRqHeader);
 
 	// send the response
-	r = sendto(fdsocket, pansc->dataptr, pansc->datalen, 0, (struct sockaddr*)&client_addr, client_struct_length);
+  r = UdpRespond(pansc->dataptr, pansc->datalen);
 	if (r <= 0)
 	{
 		TRACE("UdoIpSlave: error sending back the answer!\n");
@@ -239,3 +211,159 @@ TUdoIpSlaveCacheRec * TUdoIpComm::AllocateAnsCache(TUdoIpRequest * iprq, TUdoIpR
 
 	return pac;
 }
+
+#if defined(ARDUINO)
+
+bool TUdoIpComm::WifiConnected()
+{
+  if (wifi_connected)
+  {
+    if (!prev_wifi_connected)
+    {
+      wudp.begin(WiFi.localIP(), UDPCAN_SLAVE_PORT);
+
+      TRACE("UDPCAN is ready for requests at %s\r\n", WiFi.localIP().toString().c_str());
+    }
+  }
+
+  prev_wifi_connected = wifi_connected;
+
+  return wifi_connected;
+}
+
+bool TUdoIpComm::UdpInit()
+{
+  return true;
+}
+
+int TUdoIpComm::UdpRecv()
+{
+  if (!WifiConnected())
+  {
+    return 0;
+  }
+
+  int packetsize = wudp.parsePacket();
+  if (packetsize)
+  {
+    int len = wudp.read((char *)rqbuf, rqbufsize);
+    if (len > 0)
+    {
+      client_addr = wudp.remoteIP();
+      client_port = wudp.remotePort();
+
+      mucrq.srcip = client_addr;
+      mucrq.srcport = client_port;
+      mucrq.datalen = len;
+      mucrq.dataptr = rqbuf;
+
+      return len;
+    }
+  }
+
+  return 0;
+}
+
+int TUdoIpComm::UdpRespond(void * srcbuf, unsigned buflen)
+{
+  if (!WifiConnected())
+  {
+    return 0;
+  }
+
+  wudp.beginPacket(client_addr, client_port);
+  unsigned r = wudp.write((uint8_t *)srcbuf, buflen);
+  wudp.endPacket();
+
+  return r;
+}
+
+#elif defined(CPU_ARMM)
+
+bool TUdoIpComm::UdpInit()
+{
+  udps.Init(&ip4_handler, UDOIP_DEFAULT_PORT);
+
+  return true;
+}
+
+int TUdoIpComm::UdpRecv()
+{
+  int r = udps.Receive(rqbuf, rqbufsize); // sets udps.srcaddr, udps.srcport
+  if (r > 0)
+  {
+    mucrq.srcip = udps.srcaddr.u32;
+    mucrq.srcport = udps.srcport;
+    mucrq.datalen = r;
+    mucrq.dataptr = rqbuf;
+
+    // prepare the response addresses
+    udps.destaddr = udps.srcaddr;
+    udps.destport = udps.srcport;
+  }
+  return r;
+}
+
+int TUdoIpComm::UdpRespond(void * srcbuf, unsigned buflen)
+{
+  // dst address and port is already set
+  int r = udps.Send(srcbuf, buflen);
+  return r;
+}
+
+#else
+
+bool TUdoIpComm::UdpInit()
+{
+  // Create UDP socket:
+  fdsocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+  if (fdsocket < 0)
+  {
+    TRACE("UdoIpComm: Error creating socket\n");
+    return false;
+  }
+
+  // Set port and IP:
+  server_addr.sin_family = AF_INET;
+  server_addr.sin_port = htons(port);
+  server_addr.sin_addr.s_addr = inet_addr("0.0.0.0");  // bind to all interfaces
+
+  // set the socket non-blocking
+  #ifdef WIN32
+    ioctlsocket(fdsocket, FIONBIO, &noBlock);
+  #else
+    int flags = fcntl(fdsocket, F_GETFL, 0);
+    fcntl(fdsocket, F_SETFL, flags | O_NONBLOCK);
+  #endif
+
+  // Bind to the set port and IP:
+  if (bind(fdsocket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0)
+  {
+    TRACE("UdoIpComm: bind error (is another slave already running?)\n");
+    return false;
+  }
+
+  return true;
+}
+
+int TUdoIpComm::UdpRecv()
+{
+  int r = recvfrom(fdsocket, rqbuf, rqbufsize, 0, (struct sockaddr*)&client_addr, &client_struct_length);
+  if (r > 0)
+  {
+    mucrq.srcip = *(uint32_t *)&client_addr.sin_addr;
+    mucrq.srcport = ntohs(client_addr.sin_port);
+    mucrq.datalen = r;
+    mucrq.dataptr = rqbuf;
+  }
+  return r;
+}
+
+int TUdoIpComm::UdpRespond(void * srcbuf, unsigned buflen)
+{
+  // dst address and port is already set
+  int  r = sendto(fdsocket, srcbuf, buflen, 0, (struct sockaddr*)&client_addr, client_struct_length);
+  return r;
+}
+
+#endif

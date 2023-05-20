@@ -28,12 +28,29 @@
 #ifndef UDO_IP_SLAVE_H_
 #define UDO_IP_SLAVE_H_
 
-#include "unistd.h"
-#include <string.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
+#include "platform.h"
+
+#if defined(ARDUINO)
+
+  #include "Arduino.h"
+  #include <WiFi.h>
+  #include <WiFiUdp.h>
+  #include "board_pins.h"
+
+#elif defined(CPU_ARMM)  // vihal
+  #include "board_pins.h"
+
+  #include "netadapter.h"
+  #include "net_ip4.h"
+#else // linux
+  #include "unistd.h"
+  #include <string.h>
+  #include <sys/socket.h>
+  #include <arpa/inet.h>
+#endif
 
 #include "mscounter.h"
+
 #include "udo.h"
 #include "udoslave.h"
 
@@ -105,16 +122,36 @@ public:
 	bool Init();
 	void Run(); // must be called regularly
 
-public:
-
-	void          ProcessUdpRequest(TUdoIpRequest * ucrq);
-
 public: // platform specific
-	int                  fdsocket = -1;
-	struct sockaddr_in   server_addr;
-	struct sockaddr_in   client_addr;
-	socklen_t            client_struct_length = sizeof(client_addr);
-	socklen_t            server_struct_length = sizeof(server_addr);
+
+  bool UdpInit();
+  int UdpRecv(); // into mcurq.
+  int UdpRespond(void * srcbuf, unsigned buflen);
+
+  void          ProcessUdpRequest(TUdoIpRequest * ucrq);
+
+#if defined(ARDUINO)
+
+  bool         prev_wifi_connected = false;
+
+  IPAddress    client_addr;
+  uint16_t     client_port;
+
+  WiFiUDP      wudp;
+
+  bool         WifiConnected();
+
+#elif defined(CPU_ARMM) // vihal
+
+  TUdp4Socket  udps; // VIHAL UDP Socket
+
+#else
+  int   fdsocket = -1;
+  struct sockaddr_in   server_addr;
+  struct sockaddr_in   client_addr;
+  socklen_t client_struct_length = sizeof(client_addr);
+  socklen_t server_struct_length = sizeof(server_addr);
+#endif
 
 public:
 	TUdoIpSlaveCacheRec *  FindAnsCache(TUdoIpRequest * iprq, TUdoIpRqHeader * prqh);
