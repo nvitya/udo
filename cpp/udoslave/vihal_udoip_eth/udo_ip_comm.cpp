@@ -19,7 +19,7 @@
  * 3. This notice may not be removed or altered from any source distribution.
  * --------------------------------------------------------------------------- */
 /*
- *  file:     udoipslave.cpp
+ *  file:     udo_ip_comm.cpp
  *  brief:    UDO IP (UDP) Slave implementation
  *  created:  2023-05-01
  *  authors:  nvitya
