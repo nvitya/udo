@@ -45,7 +45,7 @@
 #define SCOPE_CMD_FORCETRIG     7
 
 #include "udoslave.h"
-#include "paramtable.h"
+#include "simple_partable.h"
 
 typedef struct TScopeChannelData
 {

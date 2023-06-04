@@ -30,16 +30,6 @@
 
 #include "udo.h"
 
-class TUdoSlave
-{
-public:
-	virtual       ~TUdoSlave() { }
-
-	virtual bool  UdoReadWrite(TUdoRequest * udorq); // must be overridden
-
-protected:
-	bool          UdoBlobTest(TUdoRequest * udorq);
-};
 
 bool      udo_response_error(TUdoRequest * udorq, uint16_t aresult);
 bool      udo_response_ok(TUdoRequest * udorq);
@@ -52,5 +42,11 @@ bool      udo_wo_data(TUdoRequest * udorq, void * dataptr, unsigned datalen);
 bool      udo_response_cstring(TUdoRequest * udorq, char * astr);
 int32_t   udorq_intvalue(TUdoRequest * udorq);
 uint32_t  udorq_uintvalue(TUdoRequest * udorq);
+
+bool      udoslave_handle_base_objects(TUdoRequest * udorq);
+
+// the udo_slave_app_read_write must be defined somwhere in the application
+// so that can handle the application specific requests
+extern bool  udoslave_app_read_write(TUdoRequest * udorq);
 
 #endif /* SRC_UDOSLAVE_H_ */

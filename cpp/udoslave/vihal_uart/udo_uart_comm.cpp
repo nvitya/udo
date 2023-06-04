@@ -287,7 +287,7 @@ void TUdoUartComm::Run()
         rq.anslen = 0;
         rq.result = 0;
 
-        g_slaveapp.UdoReadWrite(&rq);
+        udoslave_app_read_write(&rq);  // call the application specific handler
 
         SendAnswer(); // the answer is prepared in the rq
       }

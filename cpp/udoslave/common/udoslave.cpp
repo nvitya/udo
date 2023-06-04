@@ -200,27 +200,7 @@ uint32_t udorq_uintvalue(TUdoRequest * udorq) // get unsigned integer value from
 
 //-----------------------------------------------------------------------------
 
-bool TUdoSlave::UdoReadWrite(TUdoRequest * udorq)
-{
-	if (0x0000 == udorq->index) // communication test
-	{
-		return udo_ro_uint(udorq, 0x66CCAA55, 4);
-	}
-	else if (0x0001 == udorq->index) // maximal payload length
-	{
-		return udo_ro_uint(udorq, UDO_MAX_DATALEN, 4);
-	}
-	else if (0x0002 == udorq->index) // blob test object
-	{
-		return UdoBlobTest(udorq);
-	}
-	else
-	{
-		return udo_response_error(udorq, UDOERR_INDEX);
-	}
-}
-
-bool TUdoSlave::UdoBlobTest(TUdoRequest * udorq)
+bool udoslave_handle_blobtest(TUdoRequest * udorq) // object 0002
 {
 	// provide 16384 incrementing 32-bit integers
 
@@ -282,4 +262,24 @@ bool TUdoSlave::UdoBlobTest(TUdoRequest * udorq)
 
 	udorq->result = 0;
 	return true;
+}
+
+bool udoslave_handle_base_objects(TUdoRequest * udorq)
+{
+  if (0x0000 == udorq->index) // communication test
+  {
+    return udo_ro_uint(udorq, 0x66CCAA55, 4);
+  }
+  else if (0x0001 == udorq->index) // maximal payload length
+  {
+    return udo_ro_uint(udorq, UDO_MAX_DATALEN, 4);
+  }
+  else if (0x0002 == udorq->index) // blob test object
+  {
+    return udoslave_handle_blobtest(udorq);
+  }
+  else
+  {
+    return udo_response_error(udorq, UDOERR_INDEX);
+  }
 }

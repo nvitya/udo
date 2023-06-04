@@ -30,10 +30,8 @@
 #include "stdint.h"
 #include "string.h"
 #include "udoslave.h"
-#include "paramtable.h"
-#include "traces.h"
-
-#include "device.h"
+#include "simple_partable.h"
+#include "udoslave_traces.h"
 
 TScope g_scope;
 
@@ -255,15 +253,7 @@ void TScope::PrepareSampling()
 	buf_end_ptr = next_smp_ptr + (sample_width * sample_count);
 
 	cur_smp_index = 0;
-
-	if (smp_cycles > 0)
-	{
-		smp_cycle_counter = g_device.irq_cycle_counter % smp_cycles;  // some irq cycle synchronization
-	}
-	else
-	{
-		smp_cycle_counter = 0;
-	}
+  smp_cycle_counter = 0;
 
 	// prepare the trigger, for unsigned comparison
 
