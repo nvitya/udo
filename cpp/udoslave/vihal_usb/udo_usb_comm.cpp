@@ -525,7 +525,7 @@ void TUdoCdcData::HandleTx()
 
 bool TUdoCdcData::AddTx(void * asrc, unsigned len)
 {
-  if (usb_txlen + len >= sizeof(usb_txbuf))
+  if (usb_txlen + len > sizeof(usb_txbuf))
   {
     return false;
   }
