@@ -46,9 +46,9 @@
 #define UDOERR_WRITE_ONLY       0x2011
 #define UDOERR_WRITE_BOUNDS     0x2012  // write is out ouf bounds
 #define UDOERR_WRITE_VALUE      0x2020  // invalid value
-#define UDOERR_RUN_MODE         0x2030  // config mode required
-#define UDOERR_UNITSEL          0x2040  // the referenced unit is not existing
 #define UDOERR_BUSY             0x2050
+
+#define UDOERR_APP_BASE         0x5000  // base of application specific error codes
 
 #define UDOERR_NOT_IMPLEMENTED  0x9001
 #define UDOERR_INTERNAL         0x9002  // internal implementation error
