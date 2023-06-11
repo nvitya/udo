@@ -39,7 +39,7 @@ bool      udo_ro_uint(TUdoRequest * udorq, unsigned avalue, unsigned len);
 bool      udo_rw_data(TUdoRequest * udorq, void * dataptr, unsigned datalen);
 bool      udo_ro_data(TUdoRequest * udorq, void * dataptr, unsigned datalen);
 bool      udo_wo_data(TUdoRequest * udorq, void * dataptr, unsigned datalen);
-bool      udo_response_cstring(TUdoRequest * udorq, char * astr);
+bool      udo_response_cstring(TUdoRequest * udorq, const char * astr);
 int32_t   udorq_intvalue(TUdoRequest * udorq);
 uint32_t  udorq_uintvalue(TUdoRequest * udorq);
 

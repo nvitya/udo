@@ -33,7 +33,7 @@
 bool udo_response_error(TUdoRequest * udorq, uint16_t aresult)
 {
   udorq->result = aresult;
-  return false;
+  return (aresult == 0);
 }
 
 bool udo_response_ok(TUdoRequest * udorq)
@@ -144,10 +144,10 @@ bool udo_wo_data(TUdoRequest * udorq, void * dataptr, unsigned datalen)
 	return false;
 }
 
-bool udo_response_cstring(TUdoRequest * udorq, char * astr)
+bool udo_response_cstring(TUdoRequest * udorq, const char * astr)
 {
 	unsigned len = strlen(astr);
-	return udo_ro_data(udorq, astr, len);
+	return udo_ro_data(udorq, (void *)astr, len);
 }
 
 int32_t udorq_intvalue(TUdoRequest * udorq) // get signed integer value from the udo request
