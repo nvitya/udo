@@ -149,11 +149,63 @@ void TUdoComm::UdoWrite(uint16_t index, uint32_t offset, void * dataptr, uint32_
 	commh->UdoWrite(index, offset, dataptr, datalen);
 }
 
-int32_t TUdoComm::UdoReadInt(uint16_t index, uint32_t offset)
+int TUdoComm::ReadBlob(uint16_t index, uint32_t offset, void *  dataptr, uint32_t maxdatalen)
+{
+  int r;
+  int result = 0;
+  int remaining = maxdatalen;
+  uint8_t * pdata = (uint8_t *)dataptr;
+  uint32_t offs = offset;
+
+  while (remaining > 0)
+  {
+    int chunksize = max_payload_size;
+    if (chunksize > remaining)  chunksize = remaining;
+    r = commh->UdoRead(index, offs, pdata, chunksize);
+    if (r <= 0)
+    {
+      break;
+    }
+
+    result += r;
+    pdata  += r;
+    offs   += r;
+    remaining -= r;
+
+    if (r < chunksize)
+    {
+      break;
+    }
+  }
+
+  return result;
+}
+
+void TUdoComm::WriteBlob(uint16_t index, uint32_t offset, void *  dataptr, uint32_t datalen)
+{
+  int r;
+  int remaining = datalen;
+  uint8_t * pdata = (uint8_t *)dataptr;
+  uint32_t offs = offset;
+
+  while (remaining > 0)
+  {
+    int chunksize = max_payload_size;
+    if (chunksize > remaining)  chunksize = remaining;
+    commh->UdoWrite(index, offs, pdata, chunksize);
+
+    pdata  += chunksize;
+    offs   += chunksize;
+    remaining -= chunksize;
+  }
+}
+
+
+int32_t TUdoComm::ReadI32(uint16_t index, uint32_t offset)
 {
 	int32_t i32 = 0;
 	int r = UdoRead(index, offset, &i32, sizeof(i32));
-	if (2 == r) // do some sign extension
+	if (2 == r) // sign extension required
 	{
 		return *(int16_t *)&i32;
 	}
@@ -163,7 +215,55 @@ int32_t TUdoComm::UdoReadInt(uint16_t index, uint32_t offset)
 	}
 }
 
-void TUdoComm::UdoWriteInt(uint16_t index, uint32_t offset, int32_t avalue)
+int16_t TUdoComm::ReadI16(uint16_t index, uint32_t offset)
+{
+	int16_t rvalue = 0;
+	int r = UdoRead(index, offset, &rvalue, sizeof(rvalue));
+	return rvalue;
+}
+
+uint32_t TUdoComm::ReadU32(uint16_t index, uint32_t offset)
+{
+	uint32_t rvalue = 0;
+	int r = UdoRead(index, offset, &rvalue, sizeof(rvalue));
+	return rvalue;
+}
+
+uint16_t TUdoComm::ReadU16(uint16_t index, uint32_t offset)
+{
+	uint16_t rvalue = 0;
+	int r = UdoRead(index, offset, &rvalue, sizeof(rvalue));
+	return rvalue;
+}
+
+uint8_t TUdoComm::ReadU8(uint16_t index, uint32_t offset)
+{
+	uint8_t rvalue = 0;
+	int r = UdoRead(index, offset, &rvalue, sizeof(rvalue));
+	return rvalue;
+}
+
+void TUdoComm::WriteI32(uint16_t index, uint32_t offset, int32_t avalue)
+{
+	UdoWrite(index, offset, &avalue, sizeof(avalue));
+}
+
+void TUdoComm::WriteI16(uint16_t index, uint32_t offset, int16_t avalue)
+{
+	UdoWrite(index, offset, &avalue, sizeof(avalue));
+}
+
+void TUdoComm::WriteU32(uint16_t index, uint32_t offset, uint32_t avalue)
+{
+	UdoWrite(index, offset, &avalue, sizeof(avalue));
+}
+
+void TUdoComm::WriteU16(uint16_t index, uint32_t offset, uint16_t avalue)
+{
+	UdoWrite(index, offset, &avalue, sizeof(avalue));
+}
+
+void TUdoComm::WriteU8(uint16_t index, uint32_t offset, uint8_t avalue)
 {
 	UdoWrite(index, offset, &avalue, sizeof(avalue));
 }

@@ -20,6 +20,9 @@ using namespace std;
 
 class TCommHandlerUdoSl : public TUdoCommHandler
 {
+private:
+  typedef TUdoCommHandler super;
+
 public:
 	string     devstr;
 	TSerComm   comm;
@@ -37,28 +40,28 @@ public:
 	virtual void       UdoWrite(uint16_t index, uint32_t offset, void * dataptr, uint32_t datalen);
 
 protected:
-  int        rxreadpos;
-  int        rxcnt;
-  int        rxstate;
-  uint8_t    crc;
-  nstime_t   lastrecvtime;
+  int        rxreadpos = 0;
+  int        rxcnt = 0;
+  int        rxstate = 0;
+  uint8_t    crc = 0;
+  nstime_t   lastrecvtime = 0;
 
   string     opstring;
-  bool       iswrite;
-  uint16_t   mindex;
-  uint32_t   moffset;
-  uint32_t   mmetadata;
-  uint32_t   mrqlen;
-  uint8_t *  mdataptr;
+  bool       iswrite = false;
+  uint16_t   mindex = 0;
+  uint32_t   moffset = 0;
+  uint32_t   mmetadata = 0;
+  uint32_t   mrqlen = 0;
+  uint8_t *  mdataptr = nullptr;
 
-  uint32_t   ans_index;
-  uint32_t   ans_offset;
-  uint32_t   ans_metadata;
-  int        ans_datalen;
+  uint32_t   ans_index = 0;
+  uint32_t   ans_offset = 0;
+  uint32_t   ans_metadata = 0;
+  int        ans_datalen = 0;
 
-  int        rwbuf_ansdatapos;  // the start of the answer data in the rwbuf (answer phase)
+  int        rwbuf_ansdatapos = 0;  // the start of the answer data in the rwbuf (answer phase)
 
-  uint32_t   rwbuflen;
+  uint32_t   rwbuflen = 0;
   uint8_t    rwbuf[UDOSL_MAX_RQ_SIZE - 1];
 
   void       SendRequest();

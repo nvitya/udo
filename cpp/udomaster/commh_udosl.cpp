@@ -169,7 +169,218 @@ void TCommHandlerUdoSl::SendRequest()
 
 void TCommHandlerUdoSl::RecvResponse()
 {
+	int       r;
+	uint8_t   b;
+	uint8_t   lencode;
+	uint32_t  offslen;
+	uint32_t  metalen;
+	uint16_t  ecode;
+	bool      iserror = false;
 
+	// receive the response
+
+	rwbuflen = 0;
+	rwbuf_ansdatapos = 0;
+
+  rxreadpos = 0;
+  rxstate = 0;
+  rxcnt = 0;
+  crc = 0;
+  ans_datalen = 0;
+
+  ans_offset   = 0;
+  ans_metadata = 0;
+  ans_index    = 0;
+
+	lastrecvtime = nstime();
+
+  while (true)
+  {
+  	r = comm.Read(&rwbuf[rwbuflen], sizeof(rwbuf) - rwbuflen);
+  	if (r <= 0)
+  	{
+  		if (r == -EAGAIN)
+  		{
+  			if (nstime() - lastrecvtime > timeout * 1000000000)
+  			{
+  				throw EUdoAbort(UDOERR_TIMEOUT, "%s timeout", opstring);
+  			}
+  			continue;
+  		}
+  		throw EUdoAbort(UDOERR_TIMEOUT, "%s response read error: %d", opstring, r);
+  	}
+
+  	lastrecvtime = nstime();
+
+#if TRACE_COMM
+  	printf("<< ");
+  	for (unsigned bi = 0; bi < r; ++bi)  printf(" %02X", rwbuf[rwbuflen + bi]);
+  	printf("\n");
+#endif
+
+  	rwbuflen += r;
+
+  	while (rxreadpos < rwbuflen)
+  	{
+			uint8_t b = rwbuf[rxreadpos];
+
+			if ((rxstate > 0) && (rxstate < 10))
+			{
+				crc = udo_calc_crc(crc, b);
+			}
+
+			if (0 == rxstate)  // waiting for the sync byte
+			{
+				if (0x55 == b)
+				{
+					crc = udo_calc_crc(0, b); // start the CRC from zero
+					rxstate = 1;
+				}
+			}
+			else if (1 == rxstate) // command and lengths
+			{
+        if (((b & 0x80) != 0) != iswrite)  // does the response R/W differ from the request ?
+				{
+          rxstate = 0;
+				}
+        else
+        {
+          // decode the length fields
+          offslen = (0x4210 >> ((b & 3) << 2)) & 0xF;
+          metalen = (0x4210 >> (b & 0xC)) & 0xF;  // its already multiple by 4
+
+          rxcnt = 0;
+          rxstate = 3;  // index follows normally
+
+          lencode = ((b >> 4) & 7);
+          if      (lencode < 5)   ans_datalen = ((0x84210 >> (lencode << 2)) & 0xF); // in-line demultiplexing
+          else if (5 == lencode)  ans_datalen = 16;
+          else if (7 == lencode)  rxstate = 2;     // extended length follows
+          else  // 6 == error code
+          {
+            ans_datalen = 2;
+            iserror = true;
+          }
+        }
+			}
+			else if (2 == rxstate) // extended length
+			{
+				if (0 == rxcnt)
+				{
+					ans_datalen = b; // low byte
+					rxcnt = 1;
+				}
+				else
+				{
+					ans_datalen |= (b << 8); // high byte
+					rxcnt = 0;
+					rxstate = 3; // index follows
+				}
+			}
+			else if (3 == rxstate) // index
+			{
+				if (0 == rxcnt)
+				{
+					ans_index = b;  // index low
+					rxcnt = 1;
+				}
+				else
+				{
+					ans_index |= (b << 8);  // index high
+					rxcnt = 0;
+  				if (offslen > 0)
+  				{
+  					rxstate = 4;  // offset follows
+  				}
+  				else if (metalen > 0)
+  				{
+  					rxstate = 5;  // meta follows
+  				}
+  				else if (ans_datalen > 0)
+  				{
+            rxstate = 6;  // read data or error code
+  				}
+          else
+          {
+            rxstate = 10;  // then crc check
+          }
+				}
+			}
+  		else if (4 == rxstate) // offset
+  		{
+        ans_offset |= (b << (rxcnt << 3));
+  			++rxcnt;
+  			if (rxcnt >= offslen)
+  			{
+          rxcnt = 0;
+  				if (metalen > 0)
+  				{
+  					rxstate = 5;  // meta follows
+  				}
+  				else if (ans_datalen > 0)
+  				{
+            rxstate = 6;  // read data or error code
+  				}
+          else
+          {
+            rxstate = 10;  // then crc check
+          }
+  			}
+  		}
+  		else if (5 == rxstate) // metadata
+  		{
+        ans_metadata |= (b << (rxcnt << 3));
+  			++rxcnt;
+  			if (rxcnt >= metalen)
+  			{
+          rxcnt = 0;
+  				if (ans_datalen > 0)
+  				{
+            rxstate = 6;  // read data or error code
+  				}
+          else
+          {
+            rxstate = 10;  // then crc check
+          }
+  			}
+  		}
+  		else if (6 == rxstate) // read data (or error code)
+  		{
+        if (0 == rxcnt)  // save the answer data start position
+        {
+          rwbuf_ansdatapos = rxreadpos;
+        }
+
+        // just count the bytes, the rwbuf_ansdatapos points to its start
+  			++rxcnt;
+  			if (rxcnt >= ans_datalen)
+  			{
+  				rxstate = 10;
+  			}
+  		}
+  		else if (10 == rxstate) // crc check
+  		{
+  			if (b != crc)
+  			{
+          throw EUdoAbort(UDOERR_CRC, "%s CRC error", opstring);
+  			}
+  			else  // CRC OK
+  			{
+  				if (iserror)
+  				{
+            ecode = *(uint16_t *)&rwbuf[rwbuf_ansdatapos];
+            throw EUdoAbort(ecode, "%s result: %.4X", opstring, ecode);
+  				}
+          else
+          {
+    				return;  // --> everything is ok, return to the caller
+          }
+  			}
+  		}
+
+			++rxreadpos;
+  	}
+  }
 }
 
 int TCommHandlerUdoSl::AddTx(void * asrc, int len)

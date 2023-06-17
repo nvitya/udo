@@ -45,8 +45,8 @@ public:
 	float             timeout = 1.0;
 	TUdoCommProtocol  protocol = UCP_NONE;
 
-	TUdoCommHandler();
-	virtual ~TUdoCommHandler();
+	/* constructor */ TUdoCommHandler();
+	virtual           ~TUdoCommHandler();
 
 public:
 	virtual void       Open();
@@ -76,8 +76,20 @@ public:
 	int                UdoRead(uint16_t index, uint32_t offset, void * dataptr, uint32_t maxdatalen);
 	void               UdoWrite(uint16_t index, uint32_t offset, void * dataptr, uint32_t datalen);
 
-	int32_t            UdoReadInt(uint16_t index, uint32_t offset);
-	void               UdoWriteInt(uint16_t index, uint32_t offset, int32_t avalue);
+public: // utility functions
+	int                ReadBlob(uint16_t index, uint32_t offset, void *  dataptr, uint32_t maxdatalen);
+	void               WriteBlob(uint16_t index, uint32_t offset, void *  dataptr, uint32_t datalen);
+
+	int32_t            ReadI32(uint16_t index, uint32_t offset);
+	int16_t            ReadI16(uint16_t index, uint32_t offset);
+	uint32_t           ReadU32(uint16_t index, uint32_t offset);
+	uint16_t           ReadU16(uint16_t index, uint32_t offset);
+	uint8_t            ReadU8(uint16_t index, uint32_t offset);
+	void               WriteI32(uint16_t index, uint32_t offset, int32_t avalue);
+	void               WriteI16(uint16_t index, uint32_t offset, int16_t avalue);
+	void               WriteU32(uint16_t index, uint32_t offset, uint32_t avalue);
+	void               WriteU16(uint16_t index, uint32_t offset, uint16_t avalue);
+	void               WriteU8(uint16_t index, uint32_t offset, uint8_t avalue);
 };
 
 extern TUdoCommHandler  commh_none;
