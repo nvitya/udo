@@ -200,7 +200,6 @@ void TUdoComm::WriteBlob(uint16_t index, uint32_t offset, void *  dataptr, uint3
   }
 }
 
-
 int32_t TUdoComm::ReadI32(uint16_t index, uint32_t offset)
 {
 	int32_t i32 = 0;
