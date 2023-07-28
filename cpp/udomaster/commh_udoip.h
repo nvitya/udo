@@ -9,11 +9,19 @@
 #define COMMH_UDOIP_H_
 
 #include <string>
+#include "stdint.h"
 #include "udo_comm.h"
 #include "nstime.h"
 
-#include <sys/socket.h>
-#include <arpa/inet.h>
+#ifdef WIN32
+  #include <winsock.h>
+
+  typedef int  socklen_t;
+
+#else
+  #include <sys/socket.h>
+  #include <arpa/inet.h>
+#endif
 
 using namespace std;
 

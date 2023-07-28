@@ -16,6 +16,23 @@
 
 TCommHandlerUdoIp  udoip_commh;
 
+#ifdef WIN32
+
+bool     winsock_initialized = false;
+WSAData  winsock_wsaData;
+
+void InitWinsock()
+{
+	if (!winsock_initialized)
+	{
+		// Start Winsock up
+		WSAStartup(MAKEWORD(1, 1), &winsock_wsaData);
+	}
+}
+
+#endif
+
+
 TCommHandlerUdoIp::TCommHandlerUdoIp()
 {
 	protocol = UCP_IP;
@@ -32,6 +49,11 @@ TCommHandlerUdoIp::~TCommHandlerUdoIp()
 
 void TCommHandlerUdoIp::Open()
 {
+
+	#ifdef WIN32
+		InitWinsock();
+  #endif
+
   // Create UDP socket:
   fdsocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
   if (fdsocket < 0)
@@ -165,7 +187,7 @@ void TCommHandlerUdoIp::DoUdoReadWrite()
   {
   	++trynum;
 
-		r = sendto(fdsocket, &rqbuf[0], headsize + mrqlen, 0, (sockaddr *)&server_addr, sizeof(server_addr));
+		r = sendto(fdsocket, (char *)&rqbuf[0], headsize + mrqlen, 0, (sockaddr *)&server_addr, sizeof(server_addr));
 		//printf("sendto result: %i, errno=%i\n", r, errno);
     if (r < 0)
     {
@@ -173,7 +195,7 @@ void TCommHandlerUdoIp::DoUdoReadWrite()
     }
 
     rsp_addr_len = sizeof(response_addr);
-		r = recvfrom(fdsocket, &ansbuf[0], sizeof(ansbuf), 0, (sockaddr *)&response_addr, &rsp_addr_len);
+		r = recvfrom(fdsocket, (char *)&ansbuf[0], sizeof(ansbuf), 0, (sockaddr *)&response_addr, &rsp_addr_len);
 		//printf("recvfrom result: %i, errno = %i\n", r, errno);
 		if (r <= 0)
 		{
