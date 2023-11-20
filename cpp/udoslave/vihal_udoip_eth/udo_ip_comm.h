@@ -34,6 +34,7 @@
 
 #include "udo.h"
 #include "udo_ip_base.h"
+#include "net_ip4.h"
 
 class TUdoIpComm : public TUdoIpCommBase
 {
