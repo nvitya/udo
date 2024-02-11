@@ -28,6 +28,7 @@
 #include "string.h"
 #include "udo_ip_comm.h"
 #include <fcntl.h>
+#include "board_pins.h"
 #include "traces.h"
 
 TUdoIpComm g_udoip_comm;
