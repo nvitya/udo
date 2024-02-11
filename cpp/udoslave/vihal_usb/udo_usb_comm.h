@@ -115,7 +115,6 @@ public:
   TUsbEndpoint    ep_input;
   TUsbEndpoint    ep_output;
 
-
 public: // mandatory functions
 	virtual bool    InitInterface();
 	virtual void    OnConfigured();

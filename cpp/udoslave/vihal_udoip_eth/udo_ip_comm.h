@@ -32,6 +32,8 @@
 
 #include "mscounter.h"
 
+#include "net_ip4.h"
+
 #include "udo.h"
 #include "udo_ip_base.h"
 

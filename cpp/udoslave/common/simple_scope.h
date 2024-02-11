@@ -30,7 +30,7 @@
 
 #define SCOPE_VERSION   (1 * 1000000 + 0 * 1000 + 0)
 
-#define SCOPE_MAX_CHANNELS      8
+#define SCOPE_MAX_CHANNELS     16
 
 #define SCOPE_STATE_IDLE        0
 #define SCOPE_STATE_PREFILL     1
