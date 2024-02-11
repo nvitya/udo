@@ -191,6 +191,7 @@ procedure TCommHandlerUdoIp.DoUdoReadWrite;
 var
   rqhead, anshead : PUdoIpRqHeader;
   headsize : integer;
+  rqsize : integer;
   rsp_addr_len : TSocklen;
   r : integer;
   trynum : integer;
@@ -215,18 +216,20 @@ begin
     rqhead^.len_cmd := mrqlen or (1 shl 15);
     move(mdataptr^, rqbuf[headsize], mrqlen);
     opstring := format('UdoWrite(%.4X, %d)[%d]', [mindex, moffset, mrqlen]);
+    rqsize := headsize + mrqlen;
   end
   else  // read
   begin
     rqhead^.len_cmd := mrqlen;  // bit15 = 0: read
     opstring := format('UdoRead(%.4X, %d)', [mindex, moffset]);
+    rqsize := headsize;
   end;
 
   trynum := 1;
 
 repeat_send:
 
-  r := fpsendto(fdsocket, @rqbuf[0], headsize + mrqlen, 0, @server_addr, sizeof(server_addr));
+  r := fpsendto(fdsocket, @rqbuf[0], rqsize, 0, @server_addr, sizeof(server_addr));
   if r <= 0
   then
       raise EUdoAbort.Create(UDOERR_CONNECTION, '%s request error: %d', [opstring, r]);
