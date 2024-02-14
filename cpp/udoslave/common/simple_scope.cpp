@@ -259,15 +259,14 @@ void TScope::PrepareSampling()
 
 	tr_value_mask = trigger_mask;
 
-	if (ptrigch->datadef & 0x01)  // signed?
+	if (PARF_TYPE_INT == (ptrigch->pdef->flags & PARF_TYPE_MASK))  // signed?
 	{
-		unsigned char bitlen = (ptrigch->datadef & 0x38);
-		if (32 == bitlen)
+		if (4 == ptrigch->bytelen)
 		{
 			tr_value_add = 0x80000000;
 			tr_value_mask = trigger_mask;
 		}
-		else if (16 == bitlen)
+		else if (2 == ptrigch->bytelen)
 		{
 			tr_value_add = 0xFFFF8000;
 			tr_value_mask = (trigger_mask & 0x0000FFFF);
