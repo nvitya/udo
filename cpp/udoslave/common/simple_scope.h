@@ -100,7 +100,7 @@ public:  // state + cmd
 public: // configuration
 	uint8_t             trigger_channel = 0;
 	uint8_t             trigger_slope = 0;
-	uint8_t             pretrigger_percent = 50;
+	uint32_t            pretrigger_percent = 50;
 	uint16_t            smp_cycles = 1;
 	uint32_t            max_samples = 0;  // 0 =
 	int32_t             trigger_level = 0;
