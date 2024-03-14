@@ -37,6 +37,7 @@ bool      udo_ro_int(TUdoRequest * udorq, int avalue, unsigned len);
 bool      udo_ro_uint(TUdoRequest * udorq, unsigned avalue, unsigned len);
 
 bool      udo_rw_data(TUdoRequest * udorq, void * dataptr, unsigned datalen);
+bool      udo_rw_data_zp(TUdoRequest * udorq, void * dataptr, unsigned datalen);
 bool      udo_ro_data(TUdoRequest * udorq, void * dataptr, unsigned datalen);
 bool      udo_wo_data(TUdoRequest * udorq, void * dataptr, unsigned datalen);
 bool      udo_response_cstring(TUdoRequest * udorq, const char * astr);

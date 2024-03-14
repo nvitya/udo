@@ -122,6 +122,15 @@ bool udo_rw_data(TUdoRequest * udorq, void * dataptr, unsigned datalen)
 	}
 }
 
+bool udo_rw_data_zp(TUdoRequest * udorq, void * dataptr, unsigned datalen)
+{
+  if (udorq->iswrite)
+  {
+    memset(dataptr, 0, datalen);
+  }
+  return udo_rw_data(udorq, dataptr, datalen);
+}
+
 bool udo_ro_data(TUdoRequest * udorq, void * dataptr, unsigned datalen)
 {
 	if (!udorq->iswrite)

@@ -15,4 +15,7 @@ public:
 	virtual ~TClass() { };
 };
 
+typedef TClass *  PClass;
+typedef void (TClass::*PClassCallback)(void * arg);
+
 #endif /* _TCLASS_H_ */

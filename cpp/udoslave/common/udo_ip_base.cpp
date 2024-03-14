@@ -115,7 +115,7 @@ void TUdoIpCommBase::ProcessUdpRequest(TUdoIpRequest * ucrq)
     r = UdpRespond(pansc->dataptr, pansc->datalen);
     if (r <= 0)
     {
-      TRACE("UdoIpSlave: error sending back the answer!\r\n");
+      TRACE("UdoIpSlave: error sending back the (cached) answer: %i!\r\n", r);
     }
 		return;
 	}
@@ -165,7 +165,7 @@ void TUdoIpCommBase::ProcessUdpRequest(TUdoIpRequest * ucrq)
   r = UdpRespond(pansc->dataptr, pansc->datalen);
 	if (r <= 0)
 	{
-		TRACE("UdoIpSlave: error sending back the answer!\n");
+		TRACE("UdoIpSlave: error sending back the answer: %i!\r\n", r);
 	}
 }
 

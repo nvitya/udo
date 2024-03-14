@@ -364,7 +364,7 @@ void TUdoCdcData::HandleRx()
       {
         // execute the request, prepare the answer
         rq.maxanslen = rq.rqlen;
-        if (rq.maxanslen > sizeof(rwdatabuf))  then rq.maxanslen = sizeof(rwdatabuf);
+        if (rq.maxanslen > sizeof(rwdatabuf))  rq.maxanslen = sizeof(rwdatabuf);
         rq.anslen = 0;
         rq.result = 0;
 
