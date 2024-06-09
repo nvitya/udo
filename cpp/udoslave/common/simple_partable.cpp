@@ -28,6 +28,7 @@
 #include "simple_partable.h"
 #include "udoslave.h"
 
+__attribute__((weak))
 bool param_read_write(TUdoRequest * udorq)
 {
 	uint16_t index = udorq->index;
@@ -83,6 +84,7 @@ bool param_read_write(TUdoRequest * udorq)
 	return udo_response_error(udorq, UDOERR_INDEX);
 }
 
+__attribute__((weak))
 TParameterDef * pdef_get(uint16_t aindex)
 {
 	const TParamRangeDef * prtab = &param_range_table[0];
@@ -113,6 +115,7 @@ TParameterDef * pdef_get(uint16_t aindex)
 	return nullptr;
 }
 
+__attribute__((weak))
 int pdef_varsize(TParameterDef * pdef)
 {
 	uint8_t sizecode = (pdef->flags & PARF_SIZE_MASK);
@@ -126,6 +129,7 @@ int pdef_varsize(TParameterDef * pdef)
 	return 1;
 }
 
+__attribute__((weak))
 bool pdef_empty(TParameterDef * pdef)
 {
 	if (!pdef->var_ptr && !pdef->obj_func_ptr && !pdef->method_ptr)
@@ -138,6 +142,7 @@ bool pdef_empty(TParameterDef * pdef)
 	}
 }
 
+__attribute__((weak))
 bool param_handle_pdef(TUdoRequest * udorq, TParameterDef * pdef)
 {
 	uint16_t   f = pdef->flags;
@@ -196,6 +201,7 @@ bool param_handle_pdef(TUdoRequest * udorq, TParameterDef * pdef)
 	return param_handle_pdef_var(udorq, pdef, varptr);
 }
 
+__attribute__((weak))
 bool param_handle_pdef_var(TUdoRequest * udorq, TParameterDef * pdef, void * varptr)
 {
 	if (!varptr)
