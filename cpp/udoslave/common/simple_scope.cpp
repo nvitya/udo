@@ -305,15 +305,36 @@ void TScope::RunIrqTask()
 		else if (smp_cycle_counter >= smp_cycles)
 		{
 			smp_cycle_counter = 0;
-			// store a sample
-			for (unsigned i = 0; i < channel_count; ++i)
-			{
-				TScopeChannelData * pch = &channels[i];
-				for (n = 0; n < pch->bytelen; ++n)
-				{
-					*next_smp_ptr++ = pch->varptr[n];
-				}
-			}
+
+      // optimized sampling cycle
+			TScopeChannelData * pch = &channels[0];
+			TScopeChannelData * pch_end = pch + channel_count;
+      while (pch < pch_end)
+      {
+        #if MCU_NO_UNALIGNED
+          for (n = 0; n < pch->bytelen; ++n)
+          {
+            *next_smp_ptr++ = pch->varptr[n];
+          }
+        #else
+          if (2 == pch->bytelen) // most probable case
+          {
+            *(uint16_t *)next_smp_ptr = *(uint16_t *)pch->varptr;
+            next_smp_ptr += 2;
+          }
+          else if (4 == pch->bytelen)
+          {
+            *(uint32_t *)next_smp_ptr = *(uint32_t *)pch->varptr;
+            next_smp_ptr += 4;
+          }
+          else
+          {
+            *next_smp_ptr = *pch->varptr;
+            next_smp_ptr += 1;
+          }
+        #endif
+        ++pch;
+      }
 
 			if (next_smp_ptr >= buf_end_ptr)
 			{
