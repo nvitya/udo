@@ -40,6 +40,9 @@
 #ifdef WINDOWS
 #include "windows.h"
 #include "winsock.h"
+
+typedef int socklen_t;
+
 #else
 #include "unistd.h"
 #include <sys/socket.h>
@@ -57,8 +60,8 @@ public: // platform specific
   int   fdsocket = -1;
   struct sockaddr_in   server_addr;
   struct sockaddr_in   client_addr;
-  int  client_struct_length = sizeof(client_addr);
-  int  server_struct_length = sizeof(server_addr);
+  socklen_t client_struct_length = sizeof(client_addr);
+  socklen_t server_struct_length = sizeof(server_addr);
 };
 
 extern TUdoIpComm g_udoip_comm;
