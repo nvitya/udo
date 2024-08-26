@@ -13,7 +13,7 @@
 #include "udo_comm.h"
 #include "nstime.h"
 
-#ifdef WIN32
+#ifdef WINDOWS
   #include <winsock.h>
 
   typedef int  socklen_t;

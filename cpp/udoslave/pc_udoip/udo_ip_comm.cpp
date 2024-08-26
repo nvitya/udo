@@ -50,7 +50,8 @@ bool TUdoIpComm::UdpInit()
   server_addr.sin_addr.s_addr = inet_addr("0.0.0.0");  // bind to all interfaces
 
   // set the socket non-blocking
-  #ifdef WIN32
+  #ifdef WINDOWS
+    u_long noBlock = 1;
     ioctlsocket(fdsocket, FIONBIO, &noBlock);
   #else
     int flags = fcntl(fdsocket, F_GETFL, 0);
@@ -69,7 +70,7 @@ bool TUdoIpComm::UdpInit()
 
 int TUdoIpComm::UdpRecv()
 {
-  int r = recvfrom(fdsocket, rqbuf, rqbufsize, 0, (struct sockaddr*)&client_addr, &client_struct_length);
+  int r = recvfrom(fdsocket, (char *)rqbuf, rqbufsize, 0, (struct sockaddr*)&client_addr, &client_struct_length);
   if (r > 0)
   {
     miprq.srcip = *(uint32_t *)&client_addr.sin_addr;
@@ -83,6 +84,6 @@ int TUdoIpComm::UdpRecv()
 int TUdoIpComm::UdpRespond(void * srcbuf, unsigned buflen)
 {
   // dst address and port is already set
-  int  r = sendto(fdsocket, srcbuf, buflen, 0, (struct sockaddr*)&client_addr, client_struct_length);
+  int  r = sendto(fdsocket, (char *)srcbuf, buflen, 0, (struct sockaddr*)&client_addr, client_struct_length);
   return r;
 }

@@ -16,7 +16,7 @@
 
 TCommHandlerUdoIp  udoip_commh;
 
-#ifdef WIN32
+#ifdef WINDOWS
 
 bool     winsock_initialized = false;
 WSAData  winsock_wsaData;
@@ -50,7 +50,7 @@ TCommHandlerUdoIp::~TCommHandlerUdoIp()
 void TCommHandlerUdoIp::Open()
 {
 
-	#ifdef WIN32
+	#ifdef WINDOWS
 		InitWinsock();
   #endif
 
@@ -80,7 +80,7 @@ void TCommHandlerUdoIp::Open()
 
 #if 0
   // set the socket non-blocking
-  #ifdef WIN32
+  #ifdef WINDOWS
     ioctlsocket(fdsocket, FIONBIO, &noBlock);
   #else
     int flags = fcntl(fdsocket, F_GETFL, 0);

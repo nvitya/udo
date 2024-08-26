@@ -35,10 +35,16 @@
 #include "udo.h"
 #include "udo_ip_base.h"
 
-#include "unistd.h"
 #include <string.h>
+
+#ifdef WINDOWS
+#include "windows.h"
+#include "winsock.h"
+#else
+#include "unistd.h"
 #include <sys/socket.h>
 #include <arpa/inet.h>
+#endif
 
 class TUdoIpComm : public TUdoIpCommBase
 {
@@ -51,8 +57,8 @@ public: // platform specific
   int   fdsocket = -1;
   struct sockaddr_in   server_addr;
   struct sockaddr_in   client_addr;
-  socklen_t client_struct_length = sizeof(client_addr);
-  socklen_t server_struct_length = sizeof(server_addr);
+  int  client_struct_length = sizeof(client_addr);
+  int  server_struct_length = sizeof(server_addr);
 };
 
 extern TUdoIpComm g_udoip_comm;

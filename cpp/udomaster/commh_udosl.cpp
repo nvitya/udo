@@ -59,7 +59,7 @@ int TCommHandlerUdoSl::UdoRead(uint16_t index, uint32_t offset, void * dataptr, 
 	SendRequest();
   RecvResponse();
 
-	if (ans_datalen > maxdatalen)
+	if (ans_datalen > int(maxdatalen))
   {
 		throw EUdoAbort(UDOERR_DATA_TOO_BIG, "%s result data is too big: %d", opstring, ans_datalen);
   }
@@ -161,7 +161,7 @@ void TCommHandlerUdoSl::SendRequest()
 	// send the request
 
 	r = comm.Write(&rwbuf[0], rwbuflen);
-	if ((r <= 0) or (r != rwbuflen))
+	if ((r <= 0) or (r != int(rwbuflen)))
 	{
     throw EUdoAbort(UDOERR_CONNECTION, "%s: send error", opstring);
 	}
@@ -170,7 +170,6 @@ void TCommHandlerUdoSl::SendRequest()
 void TCommHandlerUdoSl::RecvResponse()
 {
 	int       r;
-	uint8_t   b;
 	uint8_t   lencode;
 	uint32_t  offslen;
 	uint32_t  metalen;
@@ -220,7 +219,7 @@ void TCommHandlerUdoSl::RecvResponse()
 
   	rwbuflen += r;
 
-  	while (rxreadpos < rwbuflen)
+  	while (rxreadpos < int(rwbuflen))
   	{
 			uint8_t b = rwbuf[rxreadpos];
 
