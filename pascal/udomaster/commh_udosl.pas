@@ -5,7 +5,7 @@ unit commh_udosl;
 interface
 
 uses
-  Classes, SysUtils, udo_comm, sercomm, fpcfixes, util_nstime;
+  Classes, SysUtils, udo_comm, serial_comm, util_nstime;
 
 const
   UDOSL_MAX_RQ_SIZE = UDO_MAX_PAYLOAD_LEN + 32; // 1024 byte payload + variable size header
@@ -19,7 +19,7 @@ type
   TCommHandlerUdoSl = class(TUdoCommHandler)
   public
     devstr     : string;
-    comm       : TSerComm;
+    comm       : TSerialComm;
 
     constructor Create; override;
     destructor Destroy; override;
@@ -76,7 +76,7 @@ implementation
 constructor TCommHandlerUdoSl.Create;
 begin
   inherited;
-  comm := TSerComm.Create;
+  comm := TSerialComm.Create;
   comm.baudrate := UDOSL_DEFAULT_SPEED;
 
   default_timeout := 0.2;
