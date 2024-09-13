@@ -1,3 +1,4 @@
+import os
 import serial
 import struct
 from udo_comm import *
@@ -72,7 +73,7 @@ class TCommHandlerUdoSl(TUdoCommHandler):
         self.com = serial.Serial(devfile, self.baudrate, timeout=self.timeout,
                                  bytesize=serial.EIGHTBITS, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE)
 
-        self.com.set_buffer_size(rx_size=16384, tx_size=16384)
+        #self.com.set_buffer_size(rx_size=16384, tx_size=16384)
 
     def Close(self):
         if self.com:

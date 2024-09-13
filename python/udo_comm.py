@@ -1,3 +1,4 @@
+import struct
 
 UCP_NONE   = 0
 UCP_SERIAL = 1
@@ -78,6 +79,20 @@ class TUdoComm:
         r = self.commh.UdoRead(index, offset, 4)
         return self.ByteArrayToInt(r)
 
+    def ReadF32(self, index : int, offset : int) -> float:
+        r = self.commh.UdoRead(index, offset, 4)
+        if len(r) >= 4:
+            return struct.unpack('f', r)[0]
+        else:
+            return 0.0
+
+    def ReadF64(self, index : int, offset : int) -> float:
+        r = self.commh.UdoRead(index, offset, 8)
+        if len(r) >= 8:
+            return struct.unpack('d', r)[0]
+        else:
+            return 0.0
+
     def ReadI16(self, index : int, offset : int) -> int:
         r = self.commh.UdoRead(index, offset, 2)
         return self.ByteArrayToInt(r)
@@ -108,6 +123,14 @@ class TUdoComm:
 
     def WriteU8(self, index : int, offset : int, value : int):
         self.commh.UdoWrite(index, offset, self.IntToByteArray(value, 1))
+
+    def WriteF32(self, index : int, offset : int, value : float):
+        ba = struct.pack('f', value)
+        self.commh.UdoWrite(index, offset, bytearray(ba))
+
+    def WriteF64(self, index : int, offset : int, value : float):
+        ba = struct.pack('d', value)
+        self.commh.UdoWrite(index, offset, bytearray(ba))
 
     def ReadBlob(self, index : int, offset : int, maxdatalen : int) -> bytearray:
         result = bytearray()
