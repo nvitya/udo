@@ -72,6 +72,34 @@ bool udo_ro_uint(TUdoRequest * udorq, unsigned avalue, unsigned len)
   return true;
 }
 
+bool udo_ro_f32(TUdoRequest * udorq, float avalue)
+{
+	if (udorq->iswrite)
+	{
+		udorq->result = UDOERR_READ_ONLY;
+		return false;
+	}
+
+  *(float *)(udorq->dataptr) = avalue;
+  udorq->anslen = sizeof(float);  // = 4
+  udorq->result = 0;
+  return true;
+}
+
+bool udo_ro_f64(TUdoRequest * udorq, double avalue)
+{
+	if (udorq->iswrite)
+	{
+		udorq->result = UDOERR_READ_ONLY;
+		return false;
+	}
+
+  *(double *)(udorq->dataptr) = avalue;
+  udorq->anslen = sizeof(double);  // = 4
+  udorq->result = 0;
+  return true;
+}
+
 bool udo_rw_data(TUdoRequest * udorq, void * dataptr, unsigned datalen)
 {
 	if (udorq->iswrite)
@@ -204,6 +232,30 @@ uint32_t udorq_uintvalue(TUdoRequest * udorq) // get unsigned integer value from
 	else
 	{
 		return *(uint8_t *)udorq->dataptr;
+	}
+}
+
+float udorq_f32value(TUdoRequest * udorq)
+{
+	if (udorq->rqlen >= sizeof(float))
+	{
+		return *(float *)udorq->dataptr;
+	}
+	else
+	{
+		return 0.0;
+	}
+}
+
+double udorq_f64value(TUdoRequest * udorq)
+{
+	if (udorq->rqlen >= sizeof(double))
+	{
+		return *(double *)udorq->dataptr;
+	}
+	else
+	{
+		return 0.0;
 	}
 }
 

@@ -35,6 +35,8 @@ bool      udo_response_error(TUdoRequest * udorq, uint16_t aresult);
 bool      udo_response_ok(TUdoRequest * udorq);
 bool      udo_ro_int(TUdoRequest * udorq, int avalue, unsigned len);
 bool      udo_ro_uint(TUdoRequest * udorq, unsigned avalue, unsigned len);
+bool      udo_ro_f32(TUdoRequest * udorq, float avalue);
+bool      udo_ro_f64(TUdoRequest * udorq, double avalue);
 
 bool      udo_rw_data(TUdoRequest * udorq, void * dataptr, unsigned datalen);
 bool      udo_rw_data_zp(TUdoRequest * udorq, void * dataptr, unsigned datalen);
@@ -43,6 +45,8 @@ bool      udo_wo_data(TUdoRequest * udorq, void * dataptr, unsigned datalen);
 bool      udo_response_cstring(TUdoRequest * udorq, const char * astr);
 int32_t   udorq_intvalue(TUdoRequest * udorq);
 uint32_t  udorq_uintvalue(TUdoRequest * udorq);
+float     udorq_f32value(TUdoRequest * udorq);
+double    udorq_f64value(TUdoRequest * udorq);
 
 bool      udoslave_handle_base_objects(TUdoRequest * udorq);
 
