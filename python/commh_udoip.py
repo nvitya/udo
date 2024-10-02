@@ -1,6 +1,6 @@
 import socket
 import struct
-from udo_comm import *
+from .udo_comm import *
 
 class TUdoIpRqHeader:
     def __init__(self):

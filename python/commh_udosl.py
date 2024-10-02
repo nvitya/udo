@@ -1,7 +1,7 @@
-import os
 import serial
 import struct
-from udo_comm import *
+import os
+from .udo_comm import *
 
 # CRC8 table with the standard polynom of 0x07:
 udo_crc_table = bytearray([
