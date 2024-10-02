@@ -90,12 +90,14 @@ type
     function  ReadU32(index : uint16; offset : uint32) : uint32;
     function  ReadU16(index : uint16; offset : uint32) : uint16;
     function  ReadU8(index : uint16; offset : uint32) : uint8;
+    function  ReadF32(index : uint16; offset : uint32) : single;
 
     procedure WriteI32(index : uint16; offset : uint32; avalue : int32);
     procedure WriteI16(index : uint16; offset : uint32; avalue : int16);
     procedure WriteU32(index : uint16; offset : uint32; avalue : uint32);
     procedure WriteU16(index : uint16; offset : uint32; avalue : uint16);
     procedure WriteU8(index : uint16; offset : uint32; avalue : uint8);
+    procedure WriteF32(index : uint16; offset : uint32; avalue : single);
 
   end;
 
@@ -375,6 +377,14 @@ begin
   result := rvalue;
 end;
 
+function TUdoComm.ReadF32(index : uint16; offset : uint32) : single;
+var
+  rvalue : single = 0;
+begin
+  commh.UdoRead(index, offset, rvalue, sizeof(rvalue));
+  result := rvalue;
+end;
+
 procedure TUdoComm.WriteI32(index : uint16; offset : uint32; avalue : int32);
 var
   lvalue : int32;
@@ -413,6 +423,14 @@ var
 begin
   lvalue := avalue;
   commh.UdoWrite(index, offset, lvalue, 1);
+end;
+
+procedure TUdoComm.WriteF32(index : uint16; offset : uint32; avalue : single);
+var
+  lvalue : single;
+begin
+  lvalue := avalue;
+  commh.UdoWrite(index, offset, lvalue, 4);
 end;
 
 initialization
