@@ -28,11 +28,29 @@
 #include "simple_partable.h"
 #include "udoslave.h"
 
+//-----------------------------------------------------------------------------
+
+// default WEAK implementations:
+
+extern const TParamRangeDef  param_range_table[];  // this must be provided
+
+__attribute__((weak))
+TParameterDef * pdef_get(uint16_t aindex)
+{
+	return prtable_pdef_get((TParamRangeDef *)param_range_table, aindex);
+}
+
 __attribute__((weak))
 bool param_read_write(TUdoRequest * udorq)
 {
+	return prtable_read_write((TParamRangeDef *)param_range_table, udorq);
+}
+
+//-----------------------------------------------------------------------------
+
+bool prtable_read_write(TParamRangeDef * prtab, TUdoRequest * udorq)
+{
 	uint16_t index = udorq->index;
-	TParamRangeDef * prtab = (TParamRangeDef *)&param_range_table[0];
 
 	while (prtab->lastindex)
 	{
@@ -84,11 +102,8 @@ bool param_read_write(TUdoRequest * udorq)
 	return udo_response_error(udorq, UDOERR_INDEX);
 }
 
-__attribute__((weak))
-TParameterDef * pdef_get(uint16_t aindex)
+TParameterDef * prtable_pdef_get(TParamRangeDef * prtab, uint16_t aindex)
 {
-	const TParamRangeDef * prtab = &param_range_table[0];
-
 	while (prtab->firstindex)
 	{
 		if (aindex < prtab->firstindex)

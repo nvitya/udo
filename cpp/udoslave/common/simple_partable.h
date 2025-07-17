@@ -46,9 +46,8 @@ struct TParamRangeDef
 //
 };
 
-extern const TParamRangeDef  param_range_table[];  // this must be provided
-
-TParameterDef * pdef_get(uint16_t aindex);
+TParameterDef * prtable_pdef_get(TParamRangeDef * prtab, uint16_t aindex);
+TParameterDef * pdef_get(uint16_t aindex); // WEAK implementation by default
 
 int pdef_varsize(TParameterDef * pdef);
 
@@ -57,6 +56,7 @@ bool pdef_empty(TParameterDef * pdef);
 bool param_handle_pdef(TUdoRequest * udorq, TParameterDef * pdef);
 bool param_handle_pdef_var(TUdoRequest * udorq, TParameterDef * pdef, void * varptr);
 
-bool param_read_write(TUdoRequest * udorq);
+bool prtable_read_write(TParamRangeDef * prtab, TUdoRequest * udorq);
+bool param_read_write(TUdoRequest * udorq); // WEAK implementation by default
 
 #endif /* SIMPLE_PARTABLE_H_ */
