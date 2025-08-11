@@ -11,7 +11,7 @@ uses
 {$else}
   BaseUnix,
 {$endif}
-  udo_comm, fpcfixes;
+  udo_comm;
 
 const
   UDOIP_MAX_DATALEN = UDO_MAX_PAYLOAD_LEN;
