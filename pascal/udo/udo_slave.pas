@@ -50,7 +50,7 @@ type
   public
     dgans     : TUdoDatagram;
 
-    constructor Create(alisten_port : uint16 = udo_ip_default_port); reintroduce;
+    constructor Create(alisten_port : uint16 = udo_ip_default_port); virtual; reintroduce;
     destructor Destroy; override;
 
     function ParamReadWrite(var udorq : TUdoRequest) : boolean; virtual;
@@ -201,7 +201,7 @@ begin
 			udorq.anslen := remaining;
     end;
 
-		move(udorq.dataptr^, cp^, udorq.anslen);
+		move(cp^, udorq.dataptr^, udorq.anslen);
 		udorq.result := 0;
 		result := true;
   end;
