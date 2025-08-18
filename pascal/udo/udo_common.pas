@@ -16,7 +16,7 @@ const
   UDOERR_TIMEOUT                = $1003;
   UDOERR_DATA_TOO_BIG           = $1004;
 
-  UDOERR_WRONG_INDEX            = $2000;  // index / object does not exists
+  UDOERR_INDEX                  = $2000;  // index / object does not exists
   UDOERR_WRONG_OFFSET           = $2001;  // like the offset must be divisible by the 4
   UDOERR_WRONG_ACCESS           = $2002;
   UDOERR_READ_ONLY              = $2010;
@@ -55,7 +55,7 @@ begin
   else if abortcode = UDOERR_CRC              then result := 'CRC error'
   else if abortcode = UDOERR_TIMEOUT          then result := 'Timeout'
   else if abortcode = UDOERR_DATA_TOO_BIG     then result := 'Data does not fit'
-  else if abortcode = UDOERR_WRONG_INDEX      then result := 'Object does not exists'
+  else if abortcode = UDOERR_INDEX            then result := 'Object does not exists'
   else if abortcode = UDOERR_WRONG_OFFSET     then result := 'Invalid offset'
   else if abortcode = UDOERR_WRONG_ACCESS     then result := 'Invalid Access'
   else if abortcode = UDOERR_READ_ONLY        then result := 'Writing read-only object'
