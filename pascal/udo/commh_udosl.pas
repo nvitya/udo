@@ -30,7 +30,7 @@ unit commh_udosl;
 interface
 
 uses
-  Classes, SysUtils, udo_comm, serial_comm, util_nstime;
+  Classes, SysUtils, udo_comm, udo_common, serial_comm, util_nstime;
 
 const
   UDOSL_MAX_RQ_SIZE = UDO_MAX_PAYLOAD_LEN + 32; // 1024 byte payload + variable size header

@@ -36,7 +36,7 @@ uses
 {$else}
   BaseUnix,
 {$endif}
-  udo_comm;
+  udo_comm, udo_common;
 
 const
   UDOIP_MAX_DATALEN = UDO_MAX_PAYLOAD_LEN;
