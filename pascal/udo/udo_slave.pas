@@ -5,10 +5,11 @@ unit udo_slave;
 interface
 
 uses
-  Classes, SysUtils, udo_common, nano_sockets;
+  Classes, SysUtils, fgl, udo_common, nano_sockets;
 
 const
   udo_ip_default_port = 1221;
+  udo_slave_anscache_count = 8;
 
 type
   PUdoRequest = ^TUdoRequest;
@@ -44,16 +45,35 @@ type
     procedure ProcessInData(); override;
   end;
 
+  { TUdoAnsCacheItem }
+
+  TUdoIpSlaveBase = class;
+
+  TUdoAnsCacheItem = class
+  public
+    rqheader : TUdoIpRqHeader;
+    dg       : TUdoDatagram;
+
+    constructor Create(adg : TUdoDataGram);
+    destructor Destroy; override;
+  end;
+
+  TUdoAnsCacheList = specialize TFPGObjectList<TUdoAnsCacheItem>;  // automatically frees the objects
+
   { TUdoIpSlaveBase }
 
   TUdoIpSlaveBase = class(TNanoUdpServer)
   public
-    dgans     : TUdoDatagram;
+    anscache  : TUdoAnsCacheList;
 
     constructor Create(alisten_port : uint16 = udo_ip_default_port); virtual; reintroduce;
     destructor Destroy; override;
 
     function ParamReadWrite(var udorq : TUdoRequest) : boolean; virtual;
+
+  protected
+    function FindCachedAnswer(rqdg : TUdoDatagram) : TUdoAnsCacheItem;
+    function AllocateAnsCache(rqdg : TUdoDatagram) : TUdoAnsCacheItem;
   end;
 
 function udo_response_error(var udorq : TUdoRequest; aresult : uint16) : boolean;
@@ -366,16 +386,27 @@ var
   udoslave : TUdoIpSlaveBase;
 
   dgans : TUdoDatagram;
+  ansc : TUdoAnsCacheItem;
 
   prqh, pansh        : PUdoIpRqHeader;
   pansdata, prqdata  : PByte;
 
   mudorq : TUdoRequest;
+  udosvr : TUdoIpSlaveBase;
 begin
   udoslave := TUdoIpSlaveBase(server);
 
-  //TODO: add answer cacheing
-  dgans := TUdoIpSlaveBase(server).dgans;
+  udosvr := TUdoIpSlaveBase(server);
+  ansc  := udosvr.FindCachedAnswer(self);
+  if ansc <> nil then
+  begin
+    // send the cached answer (again)
+    ansc.dg.SendRawData();
+    EXIT;
+  end;
+
+  ansc := udosvr.AllocateAnsCache(self);  // also copies the remote_addr
+  dgans := ansc.dg;
 
   prqh  := PUdoIpRqHeader(@rawdata[0]);
   pansh := PUdoIpRqHeader(@dgans.rawdata[0]);
@@ -420,22 +451,43 @@ begin
 
 	// send the response
 
-  dgans.remote_addr := remote_addr;
   dgans.SendRawData();
+end;
+
+{ TUdoAnsCacheItem }
+
+constructor TUdoAnsCacheItem.Create(adg : TUdoDataGram);
+begin
+  dg := adg;  // overtakes the ownership !
+  rqheader.rqid := $FFFFFFFF;
+  rqheader.index := $FFFF;
+  rqheader.offset := $FFFFFFFF;
+end;
+
+destructor TUdoAnsCacheItem.Destroy;
+begin
+  dg.Free;
+  inherited Destroy;
 end;
 
 { TUdoIpSlaveBase }
 
 constructor TUdoIpSlaveBase.Create(alisten_port : uint16);
+var
+  i : integer;
 begin
   inherited Create(TUdoDatagram, alisten_port);
 
-  dgans := TUdoDatagram(CreateDatagram);
+  anscache := TUdoAnsCacheList.Create(True);
+  for i := 1 to udo_slave_anscache_count do
+  begin
+    anscache.Add(TUdoAnsCacheItem.Create(TUdoDatagram(self.CreateDatagram())));
+  end;
 end;
 
 destructor TUdoIpSlaveBase.Destroy;
 begin
-  dgans.Free;
+  anscache.Free; // also frees the objects.
   inherited Destroy;
 end;
 
@@ -449,6 +501,34 @@ begin
   begin
     result := udo_response_error(udorq, UDOERR_INDEX);
   end;
+end;
+
+function TUdoIpSlaveBase.FindCachedAnswer(rqdg : TUdoDatagram) : TUdoAnsCacheItem;
+var
+  ansc      : TUdoAnsCacheItem;
+  rqh, ansh : PUdoIpRqHeader;
+begin
+  rqh := PUdoIpRqHeader(@rqdg.rawdata[0]);
+  for ansc in anscache do
+  begin
+    ansh := @ansc.rqheader;
+		if CompareMem(@rqdg.remote_addr, @ansc.dg.remote_addr, sizeof(ansc.dg.remote_addr))
+       and (rqh^.rqid  = ansh^.rqid)  and (rqh^.len_cmd = ansh^.len_cmd)
+       and (rqh^.index = ansh^.index) and (rqh^.offset  = ansh^.offset) then
+		begin
+			// found the previous request, the response was probably lost
+			EXIT( ansc );
+    end;
+  end;
+
+  result := nil;
+end;
+
+function TUdoIpSlaveBase.AllocateAnsCache(rqdg : TUdoDatagram) : TUdoAnsCacheItem;
+begin
+  anscache.Move(anscache.Count - 1, 0); // move the last item to the front
+  result := anscache[0];
+  result.dg.remote_addr := rqdg.remote_addr;
 end;
 
 end.
