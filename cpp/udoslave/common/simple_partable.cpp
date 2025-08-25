@@ -32,8 +32,6 @@
 
 // default WEAK implementations:
 
-extern const TParamRangeDef  param_range_table[];  // this must be provided
-
 __attribute__((weak))
 TParameterDef * pdef_get(uint16_t aindex)
 {

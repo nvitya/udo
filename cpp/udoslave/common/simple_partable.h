@@ -59,4 +59,6 @@ bool param_handle_pdef_var(TUdoRequest * udorq, TParameterDef * pdef, void * var
 bool prtable_read_write(TParamRangeDef * prtab, TUdoRequest * udorq);
 bool param_read_write(TUdoRequest * udorq); // WEAK implementation by default
 
+extern const TParamRangeDef  param_range_table[];  // this must be provided
+
 #endif /* SIMPLE_PARTABLE_H_ */
