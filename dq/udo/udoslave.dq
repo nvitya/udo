@@ -1,0 +1,295 @@
+/*-----------------------------------------------------------------------------
+  This file is a part of the UDO project: https://github.com/nvitya/udo
+  Copyright (c) 2025 Viktor Nagy, nvitya
+
+  This software is provided 'as-is', without any express or implied warranty.
+  In no event will the authors be held liable for any damages arising from
+  the use of this software. Permission is granted to anyone to use this
+  software for any purpose, including commercial applications, and to alter
+  it and redistribute it freely, subject to the following restrictions:
+
+  1. The origin of this software must not be misrepresented; you must not
+     claim that you wrote the original software. If you use this software in
+     a product, an acknowledgment in the product documentation would be
+     appreciated but is not required.
+
+  2. Altered source versions must be plainly marked as such, and must not be
+     misrepresented as being the original software.
+
+  3. This notice may not be removed or altered from any source distribution.
+  ---------------------------------------------------------------------------
+   file:     udoslave.dq
+   brief:    UDO Slave implementation helpers
+   date:     2026-11-21
+   authors:  nvitya
+*/
+
+use ./udo
+
+struct SUdoRequest:
+    iswrite   : bool     // false: read
+    metalen   : byte     // length of the metadata
+    index     : uint16   // object index
+    offset    : uint32
+    metadata  : uint32
+
+    rqlen     : uint16   // requested read/write length
+    anslen    : uint16   // response data length, default = 0
+    maxanslen : uint16   // maximal read buffer length
+    result    : uint16   // 0 if no error
+
+    dataptr   : ^byte
+endstruct
+
+func UdoResponseError(udorq : ref SUdoRequest, aresult : uint16) -> bool ..
+func UdoResponseOk(udorq : ref SUdoRequest) -> bool ..
+func UdoRoInt(udorq : ref SUdoRequest, avalue : int32, len : uint32) -> bool ..
+func UdoRoUint(udorq : ref SUdoRequest, avalue : uint32, len : uint32) -> bool ..
+func UdoRoF32(udorq : ref SUdoRequest, avalue : float32) -> bool ..
+func UdoRoF64(udorq : ref SUdoRequest, avalue : float64) -> bool ..
+
+func UdoRwData(udorq : ref SUdoRequest, dataptr : pointer, datalen : uint32) -> bool ..
+func UdoRwDataZp(udorq : ref SUdoRequest, dataptr : pointer, datalen : uint32) -> bool ..
+func UdoRoData(udorq : ref SUdoRequest, dataptr : pointer, datalen : uint32) -> bool ..
+func UdoWoData(udorq : ref SUdoRequest, dataptr : pointer, datalen : uint32) -> bool ..
+func UdoResponseStr(udorq : ref SUdoRequest, astr : strslice) -> bool ..
+
+func UdorqIntValue(udorq : ref SUdoRequest) -> int32 ..
+func UdorqUintValue(udorq : ref SUdoRequest) -> uint32 ..
+func UdorqF32Value(udorq : ref SUdoRequest) -> float32 ..
+func UdorqF64Value(udorq : ref SUdoRequest) -> float64 ..
+
+func UdoSlaveHandleBaseObjects(udorq : ref SUdoRequest) -> bool ..
+
+implementation
+
+func UdoResponseError(udorq : ref SUdoRequest, aresult : uint16) -> bool:
+    udorq.result = aresult
+    return aresult == 0
+endfunc
+
+func UdoResponseOk(udorq : ref SUdoRequest) -> bool:
+    udorq.result = 0
+    return true
+endfunc
+
+func UdoRoInt(udorq : ref SUdoRequest, avalue : int32, len : uint32) -> bool:
+    if udorq.iswrite:
+        udorq.result = UDOERR_READ_ONLY
+        return false
+    endif
+    ^int32(udorq.dataptr)^ = avalue
+    udorq.anslen = len
+    udorq.result = 0
+    return true
+endfunc
+
+func UdoRoUint(udorq : ref SUdoRequest, avalue : uint32, len : uint32) -> bool:
+    if udorq.iswrite:
+        udorq.result = UDOERR_READ_ONLY
+        return false
+    endif
+    ^uint(udorq.dataptr)^ = avalue
+    udorq.anslen = len
+    udorq.result = 0
+    return true
+endfunc
+
+func UdoRoF32(udorq : ref SUdoRequest, avalue : float32) -> bool:
+    if udorq.iswrite:
+        udorq.result = UDOERR_READ_ONLY
+        return false
+    endif
+    ^float32(udorq.dataptr)^ = avalue
+    udorq.anslen = 4
+    udorq.result = 0
+    return true
+endfunc
+
+func UdoRoF64(udorq : ref SUdoRequest, avalue : float64) -> bool:
+    if udorq.iswrite:
+        udorq.result = UDOERR_READ_ONLY
+        return false
+    endif
+    ^float64(udorq.dataptr)^ = avalue
+    udorq.anslen = 8
+    udorq.result = 0
+    return true
+endfunc
+
+func UdoRwData(udorq : ref SUdoRequest, dataptr : pointer, datalen : uint32) -> bool:
+    if udorq.iswrite:
+        // write, handling segmented write too
+
+        // TRACE("udo_write(%04X, %u), len=%u\r\n", udorq->index, udorq->offset, udorq->datalen);
+
+        if datalen < udorq.offset + udorq.rqlen:
+            udorq.result = UDOERR_WRITE_BOUNDS
+            return false
+        endif
+
+        var cp :? = ^byte(dataptr)
+        cp += udorq.offset
+
+        var chunksize : uint32 = datalen - udorq.offset  // the maximal possible chunksize
+        if chunksize > udorq.rqlen:
+            chunksize = udorq.rqlen
+        endif
+        MemCopy(cp, udorq.dataptr, chunksize)
+    else:
+        if datalen <= udorq.offset:
+            udorq.anslen = 0  // empty read: no more data
+            return true
+        endif
+
+        var cp :? = ^byte(dataptr)
+        cp += udorq.offset
+
+        var remaining : uint = datalen - udorq.offset  // already checked for negative case
+        if remaining > udorq.maxanslen:
+            udorq.anslen = udorq.maxanslen
+        else:
+            udorq.anslen = remaining
+        endif
+        MemCopy(udorq.dataptr, cp, udorq.anslen)
+    endif
+    udorq.result = 0
+    return true
+endfunc
+
+func UdoRwDataZp(udorq : ref SUdoRequest, dataptr : pointer, datalen : uint32) -> bool:
+    if udorq.iswrite:
+        MemSet(dataptr, datalen, 0)
+    endif
+    return UdoRwData(udorq, dataptr, datalen)
+endfunc
+
+func UdoRoData(udorq : ref SUdoRequest, dataptr : pointer, datalen : uint32) -> bool:
+    if not udorq.iswrite:
+        return UdoRwData(udorq, dataptr, datalen)
+    endif
+    udorq.result = UDOERR_READ_ONLY
+    return false
+endfunc
+
+func UdoWoData(udorq : ref SUdoRequest, dataptr : pointer, datalen : uint32) -> bool:
+    if udorq.iswrite:
+        return UdoRwData(udorq, dataptr, datalen)
+    endif
+  	udorq.result = UDOERR_WRITE_ONLY
+	  return false
+endfunc
+
+func UdoResponseStr(udorq : ref SUdoRequest, astr : strslice) -> bool:
+	  return UdoRoData(udorq, %astr[0], astr.length);
+endfunc
+
+
+func UdorqIntValue(udorq : ref SUdoRequest) -> int32:
+    if   4 <= udorq.rqlen:  return ^int32(udorq.dataptr)^
+    elif 2 == udorq.rqlen:  return ^int16(udorq.dataptr)^
+    elif 3 == udorq.rqlen:  return ^int32(udorq.dataptr)^ & 0x00FFFFFF
+    elif 0 == udorq.rqlen:  return 0
+    else:
+        return ^int8(udorq.dataptr)^
+    endif
+endfunc
+
+func UdorqUintValue(udorq : ref SUdoRequest) -> uint32:
+    if   4 <= udorq.rqlen:  return ^uint32(udorq.dataptr)^
+    elif 2 == udorq.rqlen:  return ^uint16(udorq.dataptr)^
+    elif 3 == udorq.rqlen:  return ^uint32(udorq.dataptr)^ & 0x00FFFFFF
+    elif 0 == udorq.rqlen:  return 0
+    else:
+        return ^uint8(udorq.dataptr)^
+    endif
+endfunc
+
+func UdorqF32Value(udorq : ref SUdoRequest) -> float32:
+	  if udorq.rqlen >= SizeOf(float32):
+        return ^float32(udorq.dataptr)^
+    else:
+        return 0
+    endif
+endfunc
+
+func UdorqF64Value(udorq : ref SUdoRequest) -> float64:
+	  if udorq.rqlen >= SizeOf(float64):
+        return ^float64(udorq.dataptr)^
+    else:
+        return 0
+    endif
+endfunc
+
+func UdoSlaveHandleBlobTest(udorq : ref SUdoRequest) -> bool: // object 0002
+    // provide 16384 incrementing 32-bit integers
+
+    var datalen : uint32 = 262144
+
+    if udorq.offset & 3 <> 0:
+        return UdoResponseError(udorq, UDOERR_WRONG_OFFSET)
+    endif
+
+    udorq.rqlen = (udorq.rqlen + 3) & 0xFFFC  // force rqlen 4 divisible
+
+    var v : uint32 = (udorq.offset >> 2)  // starting number
+
+    if udorq.iswrite:
+        if datalen < udorq.offset + udorq.rqlen:
+            udorq.result = UDOERR_WRITE_BOUNDS
+            return false
+        endif
+
+        var sp   : ^uint32 = ^uint32(udorq.dataptr)
+        var endp : ^uint32 = sp + (udorq.rqlen >> 2)
+        while sp < endp:
+            if sp^ <> v:
+                udorq.result = UDOERR_WRITE_VALUE
+                return false
+            endif
+            ++sp
+            ++v
+        endwhile
+    else:
+        if datalen <= udorq.offset:
+            udorq.anslen = 0  // empty read: no more data
+            return true
+        endif
+
+        var remaining : uint = datalen - udorq.offset
+        if remaining > udorq.maxanslen:
+            udorq.anslen = udorq.maxanslen
+        else:
+            udorq.anslen = remaining
+        endif
+
+        var dp   : ^uint32 = ^uint32(udorq.dataptr)
+        var endp : ^uint32 = dp + (udorq.anslen >> 2)
+        while dp < endp:
+            dp^ = v
+            ++dp
+            ++v
+        endwhile
+    endif
+
+    udorq.result = 0
+    return true
+endfunc
+
+
+func UdoSlaveHandleBaseObjects(udorq : ref SUdoRequest) -> bool:
+    if   0x0000 == udorq.index: // communication test
+        return UdoRoUint(udorq, 0x66CCAA55, 4)
+
+    elif 0x0001 == udorq.index: // maximal payload length
+        return UdoRoUint(udorq, UDO_MAX_PAYLOAD_LEN, 4)
+
+    elif 0x0002 == udorq.index: // blob test object
+        return UdoSlaveHandleBlobTest(udorq)
+
+    else:
+        return UdoResponseError(udorq, UDOERR_INDEX)
+    endif
+endfunc
+
+
