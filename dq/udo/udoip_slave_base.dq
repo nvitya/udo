@@ -28,7 +28,7 @@ struct SUdoIpSlaveCache:
     dataptr          : ^byte
 endstruct
 
-object OUdoIpSlave(OUdoSlaveBase):
+object OUdoIpSlaveBase(OUdoSlaveBase):
 public
     port             : uint16 = UDOIP_DEFAULT_PORT
 
@@ -83,15 +83,23 @@ endobject
 
 implementation
 
-var udoip_rq_buffer        : [UDOIP_MAX_RQ_SIZE] byte
-var udoip_ans_cache_buffer : [UDOIP_ANSCACHE_NUM * UDOIP_MAX_RQ_SIZE] byte  // this might be relative big!
+// use a statically allocated buffer on bare metal
+#ifdef BARE
+  var udoip_rq_buffer        : [UDOIP_MAX_RQ_SIZE] byte
+  var udoip_ans_cache_buffer : [UDOIP_ANSCACHE_NUM * UDOIP_MAX_RQ_SIZE] byte  // this might be relative big!
+#endif
 
-func OUdoIpSlave.Init() -> bool:
+func OUdoIpSlaveBase.Init() -> bool:
     use *
     initialized = false
 
+  #ifdef BARE  // use the statically allocated buffers
     rqbuf = %udoip_rq_buffer[0]
     rqbufsize = SizeOf(udoip_rq_buffer)
+  #else // allocate on heap
+    rqbufsize = UDOIP_MAX_RQ_SIZE
+    rqbuf = ^byte(MemAlloc(rqbufsize))
+  #endif
 
     // initialize the ans_cache
 
@@ -99,7 +107,11 @@ func OUdoIpSlave.Init() -> bool:
     var n : uint = 0
     while n < UDOIP_ANSCACHE_NUM:
         MemSet(%ans_cache[n], 0, SizeOf(ans_cache[0]))
+      #ifdef BARE  // use the statically allocated buffers
         ans_cache[n].dataptr = %udoip_ans_cache_buffer[offs]
+      #else  // allocate on heap
+        ans_cache[n].dataptr = ^byte(MemAlloc(UDOIP_MAX_RQ_SIZE))
+      #endif
         ans_cache[n].idx = n
         offs += UDOIP_MAX_RQ_SIZE
         ans_cache_lru_idx[n] = n
@@ -116,7 +128,7 @@ func OUdoIpSlave.Init() -> bool:
     return true
 endfunc
 
-func OUdoIpSlave.Run():
+func OUdoIpSlaveBase.Run():
     // Receive client's message:
     var r : int = UdpRecv()  // fills the mcurq on success
     if r > 0:
@@ -128,7 +140,7 @@ func OUdoIpSlave.Run():
     endif
 endfunc
 
-func OUdoIpSlave.ProcessUdpRequest(ucrq : ref SUdoIpRequest):
+func OUdoIpSlaveBase.ProcessUdpRequest(ucrq : ref SUdoIpRequest):
     var r : int
 
     var prqh :? = ^SUdoIpRqHeader(ucrq.dataptr)
@@ -199,7 +211,7 @@ func OUdoIpSlave.ProcessUdpRequest(ucrq : ref SUdoIpRequest):
 endfunc
 
 
-func OUdoIpSlave.FindAnsCache(iprq : ref SUdoIpRequest, prqh : ref SUdoIpRqHeader) -> ^SUdoIpSlaveCache:
+func OUdoIpSlaveBase.FindAnsCache(iprq : ref SUdoIpRequest, prqh : ref SUdoIpRqHeader) -> ^SUdoIpSlaveCache:
     use .
     var pac      : ^SUdoIpSlaveCache = %ans_cache[0]
     var last_pac : ^SUdoIpSlaveCache = pac + UDOIP_ANSCACHE_NUM
@@ -218,7 +230,7 @@ func OUdoIpSlave.FindAnsCache(iprq : ref SUdoIpRequest, prqh : ref SUdoIpRqHeade
     return nil
 endfunc
 
-func OUdoIpSlave.AllocateAnsCache(iprq : ref SUdoIpRequest, prqh : ref SUdoIpRqHeader) -> ^SUdoIpSlaveCache:
+func OUdoIpSlaveBase.AllocateAnsCache(iprq : ref SUdoIpRequest, prqh : ref SUdoIpRqHeader) -> ^SUdoIpSlaveCache:
     use *
     // re-use the oldest entry
     var idx : uint8 = ans_cache_lru_idx[0]  // the oldest entry

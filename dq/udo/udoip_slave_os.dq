@@ -1,0 +1,25 @@
+
+use ./udoip_slave_base   reexport
+
+use nanonet/nano_sockets
+use time
+
+object OUdoIpSlaveOs(OUdoIpSlaveBase):
+
+    func UdpInit() -> bool  [[override]]:
+        return false
+    endfunc
+
+    func UdpRecv() -> int  [[override]]:  // into mcurq.
+        return 0
+    endfunc
+
+    func UdpRespond(srcbuf : pointer, buflen : uint) -> int  [[override]]:
+        return 0
+    endfunc
+
+    func MsCounter() -> uint32  [[override]]:  // This must be overridden !
+        return @time.MilliTime() & 0xFFFFFFFF
+    endfunc
+
+endobject
