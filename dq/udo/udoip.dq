@@ -1,0 +1,15 @@
+// udoip definitions
+
+use ./udo
+
+const UDOIP_DEFAULT_PORT : uint16 = 1221
+const UDOIP_MAX_DATALEN  : uint = UDO_MAX_PAYLOAD_LEN
+const UDOIP_MAX_RQ_SIZE  : uint = UDOIP_MAX_DATALEN + 16 // 1024 byte payload + 16 byte header
+
+struct SUdoIpRqHeader:  // 16 bytes
+    rqid             : uint32  // request id to detect repeated requests
+    len_cmd          : uint16  // LEN, MLEN, RW
+    index            : uint16  // object index
+    offset           : uint32
+    metadata         : uint32
+endstruct

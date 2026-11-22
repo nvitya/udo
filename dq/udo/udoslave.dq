@@ -61,6 +61,16 @@ func UdorqF64Value(udorq : ref SUdoRequest) -> float64 ..
 
 func UdoSlaveHandleBaseObjects(udorq : ref SUdoRequest) -> bool ..
 
+object OUdoSlaveBase:
+
+    // application specific handler
+
+    func ParamReadWrite(rq : ref SUdoRequest) -> bool  [[virtual]]:
+        return @.UdoSlaveHandleBaseObjects(rq)
+    endfunc
+
+endobject
+
 implementation
 
 func UdoResponseError(udorq : ref SUdoRequest, aresult : uint16) -> bool:

@@ -26,6 +26,7 @@
 
 const UDO_MAX_PAYLOAD_LEN : uint = 1024
 
+
 const(uint16):
     UDOERR_CONNECTION        = 0x1001  // not connected, send / receive error
     UDOERR_CRC               = 0x1002
