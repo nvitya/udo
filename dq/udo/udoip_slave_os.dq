@@ -9,19 +9,20 @@ object OUdoDatagram(ONanoDatagram):
 endobject
 
 object OUdpServerUdoIpSlave(ONanoUdpServer):
-    udoipslave : OUdoIpSlaveBase
+public
+    udoip    : autofree OUdoIpSlave
 
-    func *Create(audoipslave : OUdoIpSlaveBase, alisten_port : uint16 = UDOIP_DEFAULT_PORT):
+    func *Create(audoslave : OUdoSlave, alisten_port : uint16 = UDOIP_DEFAULT_PORT):
         inherited Create(OUdoDatagram, alisten_port)
-        udoipslave = audoipslave
+        udoip = new OUdoIpSlave(audoslave)
+        udoip.Init()  // allocate internal structures
     endfunc
 endobject
 
 implementation
 
 func OUdoDatagram.ProcessInData() [[override]]:
-    var udpsvr   :? = OUdpServerUdoIpSlave(server)
-    var udoslave :? = udpsvr.udoipslave
+    var udpsvr :? = OUdpServerUdoIpSlave(server)
 
     var ucrq : SUdoIpRequest =
     {
@@ -33,7 +34,7 @@ func OUdoDatagram.ProcessInData() [[override]]:
 
     var rspdata : ^byte = nil
     var rsplen  : uint16 = 0
-    udoslave.ProcessUdpRequest(ucrq, rspdata, rsplen)
+    udpsvr.udoip.ProcessUdpRequest(ucrq, rspdata, rsplen)
 
     if rspdata <> nil  and rsplen > 0:
         SendResponse(rspdata, rsplen)

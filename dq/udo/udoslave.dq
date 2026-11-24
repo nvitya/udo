@@ -42,12 +42,12 @@ struct SUdoRequest:
 
     func Error(aerror : uint16) -> bool [[inline]]:
         error = aerror
-        return aerror == 0        
+        return aerror == 0
     endfunc
 
     func Ok() -> bool [[inline]]:
         error = 0
-        return true        
+        return true
     endfunc
 
     func RoInt(avalue : int32, len : uint32) -> bool ..
@@ -69,7 +69,7 @@ endstruct
 
 func UdoSlaveHandleBaseObjects(udorq : ref SUdoRequest) -> bool ..
 
-object OUdoSlaveBase:
+object OUdoSlave:
 
     // application specific handler
     func ParamReadWrite(rq : ref SUdoRequest) -> bool  [[virtual]]:

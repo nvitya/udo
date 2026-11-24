@@ -28,11 +28,13 @@ struct SUdoIpSlaveCache:
     dataptr          : ^byte
 endstruct
 
-object OUdoIpSlaveBase(OUdoSlaveBase):
+object OUdoIpSlave:
 public
     initialized      : bool = false
+    udoslave         : OUdoSlave
 
-    func *Create():
+    func *Create(audoslave : OUdoSlave):
+        udoslave = audoslave
     endfunc
 
     func *Destroy():
@@ -59,7 +61,7 @@ implementation
   var udoip_ans_cache_buffer : [UDOIP_ANSCACHE_NUM * UDOIP_MAX_RQ_SIZE] byte  // this might be relative big!
 #endif
 
-func OUdoIpSlaveBase.Init() -> bool:
+func OUdoIpSlave.Init() -> bool:
     use *
     initialized = false
 
@@ -86,7 +88,7 @@ func OUdoIpSlaveBase.Init() -> bool:
     return true
 endfunc
 
-func OUdoIpSlaveBase.ProcessUdpRequest(ucrq : ref SUdoIpRequest, rspdata : ref ^byte, rsplen : ref uint16):
+func OUdoIpSlave.ProcessUdpRequest(ucrq : ref SUdoIpRequest, rspdata : ref ^byte, rsplen : ref uint16):
     use *
     rspdata = nil
     rsplen = 0
@@ -147,7 +149,7 @@ func OUdoIpSlaveBase.ProcessUdpRequest(ucrq : ref SUdoIpRequest, rspdata : ref ^
         mudorq.dataptr = pansdata
     endif
 
-    ParamReadWrite(mudorq)  // virtual function
+    udoslave.ParamReadWrite(mudorq)
 
     if mudorq.error <> 0:
         mudorq.anslen = 2
@@ -162,7 +164,7 @@ func OUdoIpSlaveBase.ProcessUdpRequest(ucrq : ref SUdoIpRequest, rspdata : ref ^
 endfunc
 
 
-func OUdoIpSlaveBase.FindAnsCache(iprq : ref SUdoIpRequest, prqh : ref SUdoIpRqHeader) -> ^SUdoIpSlaveCache:
+func OUdoIpSlave.FindAnsCache(iprq : ref SUdoIpRequest, prqh : ref SUdoIpRqHeader) -> ^SUdoIpSlaveCache:
     use .
     var pac      : ^SUdoIpSlaveCache = %ans_cache[0]
     var last_pac : ^SUdoIpSlaveCache = pac + UDOIP_ANSCACHE_NUM
@@ -181,7 +183,7 @@ func OUdoIpSlaveBase.FindAnsCache(iprq : ref SUdoIpRequest, prqh : ref SUdoIpRqH
     return nil
 endfunc
 
-func OUdoIpSlaveBase.AllocateAnsCache(iprq : ref SUdoIpRequest, prqh : ref SUdoIpRqHeader) -> ^SUdoIpSlaveCache:
+func OUdoIpSlave.AllocateAnsCache(iprq : ref SUdoIpRequest, prqh : ref SUdoIpRqHeader) -> ^SUdoIpSlaveCache:
     use *
     // re-use the oldest entry
     var idx : uint8 = ans_cache_lru_idx[0]  // the oldest entry
