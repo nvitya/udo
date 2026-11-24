@@ -30,21 +30,7 @@ endstruct
 
 object OUdoIpSlaveBase(OUdoSlaveBase):
 public
-    port             : uint16 = UDOIP_DEFAULT_PORT
-
-public
     initialized      : bool = false
-
-    miprq            : SUdoIpRequest
-    mudorq           : SUdoRequest
-
-    rqbuf            : ^byte = nil
-    rqbufsize        : uint32 = 0
-
-    ans_cache_lru_idx : [UDOIP_ANSCACHE_NUM] uint8
-    ans_cache         : [UDOIP_ANSCACHE_NUM] SUdoIpSlaveCache
-
-    last_request_mstime : uint32 = 0
 
     func *Create():
     endfunc
@@ -53,31 +39,16 @@ public
     endfunc
 
     func Init() -> bool ..
-    func Run() ..  // must be called regularly
 
-public  // platform specific, these must be overridden
+    func ProcessUdpRequest(ucrq : ref SUdoIpRequest, rspdata : ref ^byte, rsplen : ref uint16) ..
 
-    func UdpInit() -> bool  [[virtual]]:
-        return false
-    endfunc
+protected
+    mudorq            : SUdoRequest
+    ans_cache_lru_idx : [UDOIP_ANSCACHE_NUM] uint8
+    ans_cache         : [UDOIP_ANSCACHE_NUM] SUdoIpSlaveCache
 
-    func UdpRecv() -> int  [[virtual]]:  // into mcurq.
-        return 0
-    endfunc
-
-    func UdpRespond(srcbuf : pointer, buflen : uint) -> int  [[virtual]]:
-        return 0
-    endfunc
-
-    func MsCounter() -> uint32  [[virtual]]:  // This must be overridden !
-        return 0
-    endfunc
-
-public
     func FindAnsCache(iprq : ref SUdoIpRequest, prqh : ref SUdoIpRqHeader) -> ^SUdoIpSlaveCache ..
     func AllocateAnsCache(iprq : ref SUdoIpRequest, prqh : ref SUdoIpRqHeader) -> ^SUdoIpSlaveCache ..
-
-    func ProcessUdpRequest(ucrq : ref SUdoIpRequest) ..
 endobject
 
 
@@ -85,21 +56,12 @@ implementation
 
 // use a statically allocated buffer on bare metal
 #ifdef BARE
-  var udoip_rq_buffer        : [UDOIP_MAX_RQ_SIZE] byte
   var udoip_ans_cache_buffer : [UDOIP_ANSCACHE_NUM * UDOIP_MAX_RQ_SIZE] byte  // this might be relative big!
 #endif
 
 func OUdoIpSlaveBase.Init() -> bool:
     use *
     initialized = false
-
-  #ifdef BARE  // use the statically allocated buffers
-    rqbuf = %udoip_rq_buffer[0]
-    rqbufsize = SizeOf(udoip_rq_buffer)
-  #else // allocate on heap
-    rqbufsize = UDOIP_MAX_RQ_SIZE
-    rqbuf = ^byte(MemAlloc(rqbufsize))
-  #endif
 
     // initialize the ans_cache
 
@@ -118,30 +80,20 @@ func OUdoIpSlaveBase.Init() -> bool:
         ++n
     endwhile
 
-    if not UdpInit():
-        return false
-    endif
-
     // ok.
 
     initialized = true
     return true
 endfunc
 
-func OUdoIpSlaveBase.Run():
-    // Receive client's message:
-    var r : int = UdpRecv()  // fills the mcurq on success
-    if r > 0:
-        // something was received, mcurq is prepared
-
-        ProcessUdpRequest(miprq)
-
-        last_request_mstime = MsCounter()
+func OUdoIpSlaveBase.ProcessUdpRequest(ucrq : ref SUdoIpRequest, rspdata : ref ^byte, rsplen : ref uint16):
+    use *
+    rspdata = nil
+    rsplen = 0
+    if ucrq.datalen < SizeOf(SUdoIpRqHeader)  or ucrq.datalen > UDO_MAX_PAYLOAD_LEN + SizeOf(SUdoIpRqHeader):
+        // invalid request
+        return
     endif
-endfunc
-
-func OUdoIpSlaveBase.ProcessUdpRequest(ucrq : ref SUdoIpRequest):
-    var r : int
 
     var prqh :? = ^SUdoIpRqHeader(ucrq.dataptr)
 
@@ -159,10 +111,8 @@ func OUdoIpSlaveBase.ProcessUdpRequest(ucrq : ref SUdoIpRequest):
     if pansc <> nil:
         // TRACE(" (sending cached answer)\n");
         // send back the cached answer, avoid double execution
-        r = UdpRespond(pansc.dataptr, pansc.datalen)
-        if r <= 0:
-            //TRACE("UdoIpSlave: error sending back the (cached) answer: %i!\r\n", r)
-        endif
+        rspdata = pansc.dataptr
+        rsplen  = pansc.datalen
         return
     endif
 
@@ -184,6 +134,10 @@ func OUdoIpSlaveBase.ProcessUdpRequest(ucrq : ref SUdoIpRequest):
     mudorq.metalen = (0x8420 >> ((prqh.len_cmd >> 13) & 3) * 4) & 0xF
     mudorq.metadata = prqh.metadata
 
+    if mudorq.rqlen > UDO_MAX_PAYLOAD_LEN:
+        return // invalid request !
+    endif
+
     if mudorq.iswrite:
         // write
         mudorq.dataptr = ^uint8(prqh + 1)  // the data comes after the header
@@ -203,11 +157,8 @@ func OUdoIpSlaveBase.ProcessUdpRequest(ucrq : ref SUdoIpRequest):
 
     pansc.datalen = mudorq.anslen + SizeOf(SUdoIpRqHeader)
 
-    // send the response
-    r = UdpRespond(pansc.dataptr, pansc.datalen)
-    if r <= 0:
-        //TRACE("UdoIpSlave: error sending back the answer: %i!\r\n", r)
-    endif
+    rspdata = pansc.dataptr
+    rsplen  = pansc.datalen
 endfunc
 
 

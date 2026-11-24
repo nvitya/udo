@@ -4,22 +4,38 @@ use ./udoip_slave_base   reexport
 use nanonet/nano_sockets
 use time
 
-object OUdoIpSlaveOs(OUdoIpSlaveBase):
-
-    func UdpInit() -> bool  [[override]]:
-        return false
-    endfunc
-
-    func UdpRecv() -> int  [[override]]:  // into mcurq.
-        return 0
-    endfunc
-
-    func UdpRespond(srcbuf : pointer, buflen : uint) -> int  [[override]]:
-        return 0
-    endfunc
-
-    func MsCounter() -> uint32  [[override]]:  // This must be overridden !
-        return @time.MilliTime() & 0xFFFFFFFF
-    endfunc
-
+object OUdoDatagram(ONanoDatagram):
+    func ProcessInData() [[override]] ..
 endobject
+
+object OUdpServerUdoIpSlave(ONanoUdpServer):
+    udoipslave : OUdoIpSlaveBase
+
+    func *Create(audoipslave : OUdoIpSlaveBase, alisten_port : uint16 = UDOIP_DEFAULT_PORT):
+        inherited Create(OUdoDatagram, alisten_port)
+        udoipslave = audoipslave
+    endfunc
+endobject
+
+implementation
+
+func OUdoDatagram.ProcessInData() [[override]]:
+    var udpsvr   :? = OUdpServerUdoIpSlave(server)
+    var udoslave :? = udpsvr.udoipslave
+
+    var ucrq : SUdoIpRequest =
+    {
+        srcip:    remote_addr.sin_addr.s_addr,
+        srcport:  remote_addr.sin_port,
+        datalen:  rawdata_len,
+        dataptr:  %rawdata[0]
+    }
+
+    var rspdata : ^byte = nil
+    var rsplen  : uint16 = 0
+    udoslave.ProcessUdpRequest(ucrq, rspdata, rsplen)
+
+    if rspdata <> nil  and rsplen > 0:
+        SendResponse(rspdata, rsplen)
+    endif
+endfunc
