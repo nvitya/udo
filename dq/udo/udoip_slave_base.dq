@@ -149,10 +149,10 @@ func OUdoIpSlaveBase.ProcessUdpRequest(ucrq : ref SUdoIpRequest, rspdata : ref ^
 
     ParamReadWrite(mudorq)  // virtual function
 
-    if mudorq.result <> 0:
+    if mudorq.error <> 0:
         mudorq.anslen = 2
         pansh.len_cmd |= 0x7FF  // abort response
-        ^uint16(pansdata)^ = mudorq.result
+        ^uint16(pansdata)^ = mudorq.error
     endif
 
     pansc.datalen = mudorq.anslen + SizeOf(SUdoIpRqHeader)
