@@ -1,0 +1,309 @@
+use udo           reexport
+use udo/udoslave  reexport
+
+const(uint32):
+    PARF_SIZE_32           = 0x00000000  // default
+    PARF_SIZE_8            = 0x00000001
+    PARF_SIZE_16           = 0x00000002
+    PARF_SIZE_64           = 0x00000003
+    // reserved value        0x00000004
+    // reserved value        0x00000005
+    // reserved value        0x00000006
+    PARF_SIZE_UNK          = 0x00000007  // for BLOB data
+    PARF_SIZE_MASK         = 0x00000007
+endconst
+
+// reserved bit              0x00000008
+
+const(uint32):
+    PARF_TYPE_INT          = 0x00000000  // (default) signed integer
+    PARF_TYPE_UINT         = 0x00000010  // unsigned integer
+    PARF_TYPE_FLOAT        = 0x00000020  // floating point
+    PARF_TYPE_STRING       = 0x00000030
+    // reserved value        0x00000040
+    // reserved value        0x00000050
+    // reserved value        0x00000060
+    PARF_TYPE_BLOB         = 0x00000070  // Any binary data
+    PARF_TYPE_MASK         = 0x00000070
+endconst
+
+const(uint32):
+    PARF_PP                = 0x00000080  // pointer to pointer: the variable pointer points to a pointer which points to the real data
+endconst
+
+const(uint32):
+    PARF_RW                = 0x00000000  // default
+    PARF_READONLY          = 0x00000100
+    PARF_WRITEONLY         = 0x00000200
+    PARF_ROCONST           = 0x00000300  // returns a fix value
+    PARF_RW_MASK           = 0x00000300
+endconst
+
+// reserved bit              0x00000400
+// reserved bit              0x00000800
+// reserved bit              0x00001000
+// reserved bit              0x00002000
+// reserved bit              0x00004000
+// reserved bit              0x00008000
+
+// reserved bits (16)        0xFFFF0000
+
+//----------------------------------------
+
+const(uint32):
+    PARF_INT8         = 0x00000001
+    PARF_INT16        = 0x00000002
+    PARF_INT32        = 0x00000000
+    PARF_UINT8        = 0x00000011
+    PARF_UINT16       = 0x00000012
+    PARF_UINT32       = 0x00000010
+    PARF_FLOAT        = 0x00000020
+    PARF_STRING       = PARF_SIZE_UNK | PARF_TYPE_STRING
+    PARF_BLOB         = PARF_SIZE_UNK | PARF_TYPE_BLOB
+endconst
+
+const(uint32):
+    PAR_INT8_CONST    = PARF_INT8   | PARF_ROCONST
+    PAR_INT16_CONST   = PARF_INT16  | PARF_ROCONST
+    PAR_INT32_CONST   = PARF_INT32  | PARF_ROCONST
+    PAR_UINT8_CONST   = PARF_UINT8  | PARF_ROCONST
+    PAR_UINT32_CONST  = PARF_UINT32 | PARF_ROCONST
+    PAR_UINT16_CONST  = PARF_UINT16 | PARF_ROCONST
+endconst
+
+const(uint32):
+    PAR_INT8_RW       = PARF_INT8   | PARF_RW
+    PAR_INT16_RW      = PARF_INT16  | PARF_RW
+    PAR_INT32_RW      = PARF_INT32  | PARF_RW
+    PAR_UINT8_RW      = PARF_UINT8  | PARF_RW
+    PAR_UINT16_RW     = PARF_UINT16 | PARF_RW
+    PAR_UINT32_RW     = PARF_UINT32 | PARF_RW
+    PAR_FLOAT_RW      = PARF_FLOAT  | PARF_RW
+endconst
+
+const(uint32):
+    PAR_INT8_RO       = PARF_INT8   | PARF_READONLY
+    PAR_INT16_RO      = PARF_INT16  | PARF_READONLY
+    PAR_INT32_RO      = PARF_INT32  | PARF_READONLY
+    PAR_UINT8_RO      = PARF_UINT8  | PARF_READONLY
+    PAR_UINT16_RO     = PARF_UINT16 | PARF_READONLY
+    PAR_UINT32_RO     = PARF_UINT32 | PARF_READONLY
+    PAR_FLOAT_RO      = PARF_FLOAT  | PARF_READONLY
+endconst
+
+const(uint32):
+    PAR_INT8_WO       = PARF_INT8   | PARF_WRITEONLY
+    PAR_INT16_WO      = PARF_INT16  | PARF_WRITEONLY
+    PAR_INT32_WO      = PARF_INT32  | PARF_WRITEONLY
+    PAR_UINT8_WO      = PARF_UINT8  | PARF_WRITEONLY
+    PAR_UINT16_WO     = PARF_UINT16 | PARF_WRITEONLY
+    PAR_UINT32_WO     = PARF_UINT32 | PARF_WRITEONLY
+    PAR_FLOAT_WO      = PARF_FLOAT  | PARF_WRITEONLY
+endconst
+
+
+struct SUdoParamDef ..
+
+type FUdoParamHandler = func(rq : ref SUdoRequest, adef : ^SUdoParamDef, varptr : pointer) -> bool of object
+
+struct SUdoParamDef:
+	flags          : uint32
+    var_ptr        : pointer
+    handler        : FUdoParamHandler
+endstruct
+
+
+struct SUdoParamRangeDef ..
+
+type FUdoParRangeHandler = func(rq : ref SUdoRequest, prdef : ^SUdoParamRangeDef) -> bool  of object
+
+struct SUdoParamRangeDef:
+	firstindex     : uint16
+	lastindex      : uint16
+	partable       : ^SUdoParamDef
+    handler        : FUdoParRangeHandler
+endstruct
+
+
+object OUdoParamTable:
+protected
+    range_table : ^SUdoParamRangeDef
+public
+    func SetRangeTable(arange_table : ^SUdoParamRangeDef):
+        range_table = arange_table
+    endfunc
+
+    func *Create(arange_table : ^SUdoParamRangeDef):
+        SetRangeTable(arange_table)
+    endfunc
+
+    func HandleReadWrite(udorq : ref SUdoRequest) -> bool ..
+
+    func GetPdef(aindex : uint16) -> ^SUdoParamDef ..
+    func PdefVarSize(pdef : ^SUdoParamDef) -> int ..
+
+    func PdefIsEmpty(pdef : ^SUdoParamDef) -> bool ..
+
+    func HandlePdef(udorq : ref SUdoRequest, pdef : ^SUdoParamDef) -> bool ..
+    func HandlePdefVar(udorq : ref SUdoRequest, pdef : ^SUdoParamDef, varptr : pointer) -> bool ..
+
+endobject
+
+
+const dummy_param_range_table : [?] SUdoParamRangeDef =
+[
+	// close the list with all zeroes
+	{ ? }
+]
+
+var g_udoparams <- OUdoParamTable(%dummy_param_range_table[0])
+
+
+implementation
+
+
+func OUdoParamTable.HandleReadWrite(udorq : ref SUdoRequest) -> bool:
+    use *
+    var index : uint16 = udorq.index
+    var prtab :? = range_table
+    while prtab.lastindex <> 0:
+        if index < prtab.firstindex:
+            return udorq.Error(UDOERR_INDEX)
+        endif
+
+        if prtab.firstindex <= index <= prtab.lastindex:
+            // use this entry
+            if prtab.partable <> nil:
+                return HandlePdef(udorq, prtab.partable[index - prtab.firstindex])
+            else:
+                if prtab.handler == nil:
+                    return udorq.Error(UDOERR_APPLICATION)
+                endif
+                // call the handler
+                return prtab.handler(udorq, prtab)
+            endif
+        endif
+        ++prtab
+    endwhile
+    return udorq.Error(UDOERR_INDEX)
+endfunc
+
+func OUdoParamTable.GetPdef(aindex : uint16) -> ^SUdoParamDef:
+    var prtab :? = range_table
+    while prtab.firstindex <> 0:
+        if aindex < prtab.firstindex:
+            return nil
+        endif
+        if prtab.firstindex <= aindex <= prtab.lastindex:  // use this entry
+            if prtab.partable <> nil:
+                return prtab.partable[aindex - prtab.firstindex]
+            else:
+                return nil
+            endif
+        endif
+        ++prtab
+    endwhile
+    return nil
+endfunc
+
+func OUdoParamTable.PdefVarSize(pdef : ^SUdoParamDef) -> int:
+    use *
+    var sizecode : byte = pdef.flags & PARF_SIZE_MASK
+    if sizecode == PARF_SIZE_32:
+        return 4
+    elif sizecode == PARF_SIZE_8:
+        return 1
+    elif sizecode == PARF_SIZE_16:
+        return 2
+    elif sizecode == PARF_SIZE_64:
+        return 8
+    endif
+    return 1
+endfunc
+
+func OUdoParamTable.PdefIsEmpty(pdef : ^SUdoParamDef) -> bool:
+    return pdef.var_ptr == nil  and pdef.handler == nil
+endfunc
+
+func OUdoParamTable.HandlePdef(udorq : ref SUdoRequest, pdef : ^SUdoParamDef) -> bool:
+    use *
+    var f  : uint16 = pdef.flags
+    var rw : uint16 = f & PARF_RW_MASK
+
+    if rw == PARF_ROCONST:  // special case: constants
+        if udorq.iswrite:
+            return udorq.Error(UDOERR_READ_ONLY)
+        endif
+        return udorq.RoInt(int(pdef.var_ptr), PdefVarSize(pdef))
+    endif
+
+    if rw == PARF_READONLY  and udorq.iswrite:
+        return udorq.Error(UDOERR_READ_ONLY)
+    elif rw == PARF_WRITEONLY and not udorq.iswrite:
+        return udorq.Error(UDOERR_WRITE_ONLY)
+    endif
+
+    if pdef.handler <> nil:  // Call the handler function if provided
+        return pdef.handler(udorq, pdef, pdef.var_ptr)
+    endif
+
+    return HandlePdefVar(udorq, pdef, pdef.var_ptr)
+endfunc
+
+func OUdoParamTable.HandlePdefVar(udorq : ref SUdoRequest, pdef : ^SUdoParamDef, varptr : pointer) -> bool:
+    use *
+    if varptr == nil:
+        return udorq.Error(UDOERR_APPLICATION)
+    endif
+
+    if pdef.flags & PARF_PP <> 0:
+        varptr = (^pointer(varptr))^  // resolve double pointer
+        if varptr == nil:
+            return udorq.Error(UDOERR_APPLICATION)
+        endif
+    endif
+
+    // int varsize = pdef_varsize(pdef);
+
+    var sizecode : uint16 = pdef.flags & PARF_SIZE_MASK
+    if sizecode == PARF_SIZE_32:
+        if udorq.iswrite:
+            ^uint32(varptr)^ = ^uint32(udorq.dataptr)^
+        else:
+            ^uint32(udorq.dataptr)^ = ^uint32(varptr)^
+            udorq.anslen = 4
+        endif
+        return true
+    elif sizecode == PARF_SIZE_16:
+        if udorq.iswrite:
+            ^uint16(varptr)^ = ^uint16(udorq.dataptr)^
+        else:
+            ^uint16(udorq.dataptr)^ = ^uint16(varptr)^
+            udorq.anslen = 2
+        endif
+        return true
+    elif sizecode == PARF_SIZE_8:
+        if udorq.iswrite:
+            ^byte(varptr)^ = ^byte(udorq.dataptr)^
+        else:
+            ^byte(udorq.dataptr)^ = ^byte(varptr)^
+            udorq.anslen = 1
+        endif
+        return true
+    elif sizecode == PARF_SIZE_64:
+        if udorq.iswrite:
+            // to avoid unaligned errors do in two parts
+            ^uint32(varptr)^    = ^uint32(udorq.dataptr)^
+            ^uint32(varptr)[1]^ = ^uint32(udorq.dataptr)[1]^
+        else:
+            ^uint32(udorq.dataptr)^    = ^uint32(varptr)^
+            ^uint32(udorq.dataptr)[1]^ = ^uint32(varptr)[1]^
+            udorq.anslen = 8
+        endif
+        return true
+    endif
+
+    // unknown size, can not be handled without function, wrong table definition !
+    return udorq.Error(UDOERR_APPLICATION)
+endfunc
+

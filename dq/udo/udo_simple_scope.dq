@@ -1,0 +1,451 @@
+use udo
+use udo/udoslave
+use ./udo_simple_partable
+
+const SCOPE_VERSION      : int  = 1 * 1000000  + 0 * 1000  + 0
+const SCOPE_MAX_CHANNELS : uint = 16
+
+const(byte):
+    SCOPE_STATE_IDLE      = 0
+    SCOPE_STATE_PREFILL   = 1
+    SCOPE_STATE_PERMREC   = 3
+    SCOPE_STATE_WAITTRIG  = 5
+    SCOPE_STATE_POSTFILL  = 7
+    SCOPE_STATE_DATAREADY = 8
+endconst
+
+const(byte):
+    SCOPE_CMD_STOP        = 0
+    SCOPE_CMD_PERMREC     = 1
+    SCOPE_CMD_START       = 3
+    SCOPE_CMD_FORCETRIG   = 7
+endconst
+
+struct SScopeChannelData:
+    datadef          : uint
+    bytelen          : uint32
+    varptr           : ^byte
+    pdef             : ^SUdoParamDef
+endstruct
+
+object OSimpleScope:
+private
+    channel_count    : uint8 = 0  // will be calculated in PrepareSampling()
+    ptrigch          : ^SScopeChannelData = nil
+
+    next_smp_ptr     : ^uint8
+    buf_end_ptr      : ^uint8
+
+    // trigger
+
+    tr_value_add     : uint
+    tr_value_threshold : uint
+    tr_value_mask    : uint
+
+    triggercomparevalue : uint
+
+    cur_tr_value     : uint
+    prev_tr_value    : uint
+
+    smp_cycle_counter : uint16 = 0
+
+    presmp_count     : uint
+    postsmp_count    : uint
+
+    cur_smp_index    : uint
+
+public
+    pbuffer          : ^byte = nil
+    buffer_size      : uint = 0
+    partable         : OUdoParamTable
+
+public  // state + cmd
+    state            : byte = SCOPE_STATE_IDLE
+    cmd              : byte = SCOPE_CMD_STOP
+    cmd_prev         : byte = SCOPE_CMD_STOP
+
+    sample_count     : uint32 = 0
+    sample_width     : uint32 = 0
+    trigger_index    : uint32 = 0
+
+public  // configuration
+    trigger_channel  : byte = 0
+    trigger_slope    : byte = 0
+    pretrigger_percent : uint32 = 50
+    smp_cycles       : uint16 = 1
+    max_samples      : uint32 = 0  // 0 =
+    trigger_level    : int32 = 0
+    trigger_mask     : uint32 = 0xFFFFFFFF    
+
+    channels         : [SCOPE_MAX_CHANNELS] SScopeChannelData
+
+public
+
+    func Init(apartable : OUdoParamTable, abuffer : ^byte, abuffer_size : uint32) ..
+
+    func Run() ..
+    func RunIrqTask() ..
+
+    func SetChannelDef(achnum : uint, adef : uint) -> bool ..
+    func PrepareSampling() ..
+
+    func pfn_ScopeDef(rq : ref SUdoRequest, pdef : ^SUdoParamDef, varptr : pointer) -> bool..
+    func pfn_ScopeCmd(rq : ref SUdoRequest, pdef : ^SUdoParamDef, varptr : pointer) -> bool..
+    func pfn_ScopeData(rq : ref SUdoRequest, pdef : ^SUdoParamDef, varptr : pointer) -> bool ..
+
+endobject
+
+var g_scope <- OSimpleScope()
+
+implementation
+
+func OSimpleScope.Init(apartable : OUdoParamTable, abuffer : ^byte, abuffer_size : uint32):
+    use .
+    partable = apartable
+    pbuffer = abuffer
+    buffer_size = abuffer_size
+
+    var i : int
+    i = 0
+    while i < SCOPE_MAX_CHANNELS:
+        var ch : ^SScopeChannelData = %channels[i]
+        ch.datadef = 0
+        ch.varptr = nil
+        ch.bytelen = 0
+        ++i
+    endwhile    
+endfunc
+
+func OSimpleScope.Run():
+    use .
+    if cmd_prev == cmd:
+        return
+    endif
+
+    // check for scope start
+
+    if state & 0x07 == 0:  // idle or ready
+        if cmd & 1 <> 0:
+            // start the scope.
+            PrepareSampling()
+            if channel_count > 0:
+                state = SCOPE_STATE_PREFILL
+            endif
+        endif
+    endif
+
+    cmd_prev = cmd
+endfunc
+
+func OSimpleScope.RunIrqTask():
+    use *
+    if SCOPE_STATE_WAITTRIG == state  or SCOPE_STATE_PREFILL == state
+        or SCOPE_STATE_POSTFILL == state  or SCOPE_STATE_PERMREC == state
+    :
+        // run the sampling
+
+        var n : uint
+
+        ++smp_cycle_counter
+
+        if SCOPE_CMD_STOP == cmd:
+            // stop the sampling
+            state = SCOPE_STATE_IDLE
+
+        elif smp_cycle_counter >= smp_cycles:
+            smp_cycle_counter = 0
+
+            // optimized sampling cycle
+            var pch : ^SScopeChannelData = %channels[0]
+            var pch_end : ^SScopeChannelData = pch + channel_count
+            while pch < pch_end:
+              #if FirstBool(NO_UNALIGNED, false)
+                n = 0
+                while n < pch.bytelen:
+                    next_smp_ptr^++ = pch.varptr[n]
+                    ++n
+                endwhile
+              #else
+                if 2 == pch.bytelen:  // most probable case
+                    ^uint16(next_smp_ptr)^ = ^uint16(pch.varptr)^
+                    next_smp_ptr += 2
+                elif 4 == pch.bytelen:
+                    ^uint32(next_smp_ptr)^ = ^uint32(pch.varptr)^
+                    next_smp_ptr += 4
+                elif 8 == pch.bytelen:
+                    ^uint64(next_smp_ptr)^ = ^uint64(pch.varptr)^
+                    next_smp_ptr += 8
+                else:
+                    next_smp_ptr^ = pch.varptr^
+                    next_smp_ptr += 1
+                endif
+              #endif
+                ++pch
+            endwhile
+
+            if next_smp_ptr >= buf_end_ptr:
+                next_smp_ptr = pbuffer
+            endif
+
+            // store the trigger value
+            cur_tr_value = 0
+            var ptv :? = ^uint8(%cur_tr_value)
+            n = 0
+            while n < ptrigch.bytelen:
+                ptv^ = ptrigch.varptr[n]^
+                ++ptv
+                ++n
+            endwhile
+            cur_tr_value = (cur_tr_value & tr_value_mask) + tr_value_add  // prepare value for 32 bit unsigned comparison
+
+            // post sample state handling
+            if SCOPE_STATE_PREFILL == state:  // the sampling starts here
+                ++cur_smp_index
+                if cur_smp_index >= presmp_count:
+                    if SCOPE_CMD_PERMREC == cmd:
+                        state = SCOPE_STATE_PERMREC
+                    else:
+                        state = SCOPE_STATE_WAITTRIG
+                    endif
+                endif
+
+            elif SCOPE_STATE_PERMREC == state:  // waiting for trigger arming
+                if SCOPE_CMD_FORCETRIG == cmd  or SCOPE_CMD_START == cmd:
+                    state = SCOPE_STATE_WAITTRIG
+                endif
+
+            elif SCOPE_STATE_WAITTRIG == state:
+                var triggered : bool = false
+
+                if SCOPE_CMD_FORCETRIG == cmd  or 0 == trigger_slope:
+                    triggered = true
+                else:
+                    // trigger values must be evaluated
+                    if trigger_slope == 1:  // rising edge
+                        if tr_value_threshold <= cur_tr_value  and prev_tr_value < tr_value_threshold:
+                            triggered = true
+                        endif
+                    elif trigger_slope == 2:  // falling edge
+                        if tr_value_threshold >= cur_tr_value  and prev_tr_value > tr_value_threshold:
+                            triggered = true
+                        endif
+                    elif trigger_slope == 3:  // equal to
+                        if cur_tr_value == tr_value_threshold:
+                            triggered = true
+                        endif
+                    elif trigger_slope == 4:  // not equal
+                        if cur_tr_value <> tr_value_threshold:
+                            triggered = true
+                        endif
+                    elif trigger_slope == 5:  // any edge
+                        if (cur_tr_value <= tr_value_threshold  and prev_tr_value > tr_value_threshold)
+                            or (cur_tr_value >= tr_value_threshold  and prev_tr_value < tr_value_threshold)
+                        :
+                            triggered = true
+                        endif
+                    elif trigger_slope == 6:  // change to
+                        if cur_tr_value <> prev_tr_value  and cur_tr_value == tr_value_threshold:
+                            triggered = true
+                        endif
+                    endif
+                endif
+
+                if triggered:
+                    trigger_index = cur_smp_index
+                    state = SCOPE_STATE_POSTFILL
+                endif
+
+            elif SCOPE_STATE_POSTFILL == state:
+                ++cur_smp_index
+                if cur_smp_index >= sample_count:
+                    state = SCOPE_STATE_DATAREADY
+                endif
+            endif
+
+            prev_tr_value = cur_tr_value
+        endif
+    endif    
+endfunc
+
+func OSimpleScope.SetChannelDef(achnum : uint, adef : uint) -> bool:
+    use *
+    var pch :? = %channels[achnum]
+
+    if adef == 0:  // special case to clear
+        pch.datadef = 0  // clear this channel
+        pch.varptr = nil
+        pch.bytelen = 0
+        return true
+    endif
+
+    var index : uint16 = (adef >> 16)
+    var dbytelen : uint8 = (adef & 0x0F)
+
+    var pdef :? = partable.GetPdef(index)
+    if pdef <> nil
+        and pdef.var_ptr <> nil // parameters without variable pointer are not applicable (including constants)
+        and (pdef.flags & PARF_RW_MASK <> PARF_WRITEONLY)
+        and dbytelen == partable.PdefVarSize(pdef) // the specified size must match:
+    :
+        pch.pdef = pdef
+        pch.datadef = adef
+        pch.bytelen = dbytelen
+        pch.varptr = ^byte(pdef.var_ptr)
+        if pdef.flags & PARF_PP <> 0:
+            pch.varptr = ^^byte(pch.varptr)^  // resolve double pointer
+        endif
+        return true        
+    else:
+        pch.datadef = 0  // clear this channel
+        pch.varptr = nil
+        pch.bytelen = 0
+        pch.pdef = nil
+        return false
+    endif
+endfunc
+
+func OSimpleScope.PrepareSampling():
+    use *
+    var i : int
+
+    sample_width = 0
+    channel_count = 0
+    ptrigch = nil
+
+    i = 0
+    while i < SCOPE_MAX_CHANNELS:
+        var pch : ^SScopeChannelData = %channels[i]
+        if pch.datadef <> 0  and pch.varptr <> nil  and pch.bytelen <> 0:
+            if trigger_channel == i:
+                ptrigch = pch
+            endif
+            sample_width += pch.bytelen
+            ++channel_count
+        else:
+            break
+        endif
+        ++i
+    endwhile
+
+    if channel_count < 1  or sample_width < 1:
+        return
+    endif
+
+    if ptrigch == nil:
+        ptrigch = %channels[0]  // ensure a valid trigger channel
+        trigger_channel = 0
+    endif
+
+    sample_count = buffer_size div sample_width
+    if max_samples > 0  and max_samples < sample_count:
+        sample_count = max_samples
+    endif
+
+    presmp_count  = (sample_count * pretrigger_percent) div 100
+    postsmp_count = sample_count - presmp_count
+
+    next_smp_ptr = pbuffer
+    buf_end_ptr = next_smp_ptr + (sample_width * sample_count)
+
+    cur_smp_index = 0
+    smp_cycle_counter = 0
+
+    // prepare the trigger, for unsigned comparison
+
+    tr_value_mask = trigger_mask
+
+    if PARF_TYPE_INT == (ptrigch.pdef.flags & PARF_TYPE_MASK):  // signed?
+        if 4 == ptrigch.bytelen:
+            tr_value_add = 0x80000000
+            tr_value_mask = trigger_mask
+        elif 2 == ptrigch.bytelen:
+            tr_value_add = 0xFFFF8000
+            tr_value_mask = (trigger_mask & 0x0000FFFF)
+        else:
+            tr_value_add = 0xFFFFFF80
+            tr_value_mask = (trigger_mask & 0x000000FF)
+        endif
+    else:
+        tr_value_add = 0
+    endif
+
+    tr_value_threshold = uint32(trigger_level & tr_value_mask) + tr_value_add
+    prev_tr_value = 0    
+endfunc
+
+
+func OSimpleScope.pfn_ScopeDef(rq : ref SUdoRequest, pdef : ^SUdoParamDef, varptr : pointer) -> bool:
+    use udo, .
+    var chnum : uint = rq.index - 0x5020
+    if chnum >= SCOPE_MAX_CHANNELS:
+        return rq.Error(UDOERR_INDEX)
+    endif
+
+    if not rq.iswrite:
+        return partable.HandlePdefVar(rq, pdef, varptr)
+    endif
+
+    // check the write
+
+    var value : uint32 = rq.UintValue()
+    if not SetChannelDef(chnum, value):
+        return rq.Error(UDOERR_WRITE_VALUE)
+    endif
+
+    return true
+endfunc
+
+func OSimpleScope.pfn_ScopeCmd(rq : ref SUdoRequest, pdef : ^SUdoParamDef, varptr : pointer) -> bool:
+    if not partable.HandlePdefVar(rq, pdef, varptr):
+        return false
+    endif
+
+    if rq.iswrite:
+        cmd_prev = 0  // so that the start with SDO will be noticed always
+    endif
+    return true
+endfunc
+
+func OSimpleScope.pfn_ScopeData(rq : ref SUdoRequest, pdef : ^SUdoParamDef, varptr : pointer) -> bool:    
+    use udo, .
+    if rq.iswrite:
+        return rq.Error(UDOERR_READ_ONLY)
+    endif
+
+    var fullsize : uint = sample_count * sample_width
+    if 0xFFFFFFFF == rq.offset:  // special offset, return the data length
+        return rq.RoInt(fullsize, 4)
+    endif
+
+    // TRACE("scope_data(%u / %u)\n", udorq->offset, fullsize);
+
+    if fullsize <= rq.offset:
+        rq.anslen = 0  // empty read: no more data
+        return true
+    endif
+
+    var remaining : uint = fullsize - rq.offset
+    if remaining > rq.maxanslen:
+        remaining = rq.maxanslen
+    endif
+    rq.anslen = remaining
+
+    var psrc : ^byte = next_smp_ptr  // the first sample data
+    psrc += rq.offset
+    if psrc >= buf_end_ptr:  // wrap-around handling
+        psrc = pbuffer + (psrc - buf_end_ptr)
+    endif
+
+    var pdst : ^byte = rq.dataptr
+    while remaining > 0:
+        pdst^ = psrc^
+        ++pdst
+        ++psrc
+        if psrc >= buf_end_ptr:
+            psrc = pbuffer
+        endif
+        --remaining
+    endwhile
+
+    return rq.Ok()
+endfunc
