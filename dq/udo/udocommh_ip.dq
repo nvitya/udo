@@ -24,7 +24,6 @@
    authors:  nvitya
 */
 
-use ./udo
 use ./udocomm
 use ./udoip
 use socket
@@ -97,15 +96,10 @@ func OCommHandlerIp.Open()  [[override]]:
 
     var addr : str = ipaddrstr
     var port : int = UDOIP_DEFAULT_PORT
-    var sep  : int = StrIndexOf(ipaddrstr, ':')
+    var sep  : int = ipaddrstr.IndexOf(':')
     if sep >= 0:
         addr = ipaddrstr[:sep]
         port = StrToInt(ipaddrstr[sep + 1:], -1)
-    endif
-
-    var init_error : int = SocketInit()
-    if init_error <> 0:
-        raise EUdoAbort(UDOERR_CONNECTION, 'UDO-IP socket initialization failed: {}', [init_error])
     endif
 
     var server_addr : TSockAddr = {}
