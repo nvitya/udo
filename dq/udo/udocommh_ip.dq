@@ -1,0 +1,267 @@
+/*-----------------------------------------------------------------------------
+  This file is a part of the UDO project: https://github.com/nvitya/udo
+  Copyright (c) 2023 Viktor Nagy, nvitya
+
+  This software is provided 'as-is', without any express or implied warranty.
+  In no event will the authors be held liable for any damages arising from
+  the use of this software. Permission is granted to anyone to use this
+  software for any purpose, including commercial applications, and to alter
+  it and redistribute it freely, subject to the following restrictions:
+
+  1. The origin of this software must not be misrepresented; you must not
+     claim that you wrote the original software. If you use this software in
+     a product, an acknowledgment in the product documentation would be
+     appreciated but is not required.
+
+  2. Altered source versions must be plainly marked as such, and must not be
+     misrepresented as being the original software.
+
+  3. This notice may not be removed or altered from any source distribution.
+  ---------------------------------------------------------------------------
+   file:     udocommh_ip.dq
+   brief:    UDO Master communication over IP (using UDP)
+   date:     2026-11-27
+   authors:  nvitya
+*/
+
+use ./udo
+use ./udocomm
+use ./udoip
+use socket
+
+struct SUdoIpPacket:
+    header : SUdoIpRqHeader
+    data   : [UDOIP_MAX_DATALEN + 8] byte  // +8: to detect an oversized datagram even if recv truncates it.
+endstruct
+
+object OCommHandlerIp(OUdoCommHandler):
+    ipaddrstr  : str    = '127.0.0.1'
+    max_tries  : int    = 3
+    timeout_ms : int    = 500
+    cursqnum   : uint16 = 0
+
+    func *Create() ..
+    func *Destroy() ..
+
+    func Open()               [[override]] ..
+    func Close()              [[override]] ..
+    func Opened() -> bool     [[override]] ..
+    func ConnString() -> str  [[override]] ..
+
+    func UdoRead(index : uint16, offset : uint32, dataptr : pointer, maxdatalen : uint32) -> int  [[override]] ..
+    func UdoWrite(index : uint16, offset : uint32, dataptr : pointer, datalen : uint32)           [[override]] ..
+
+private
+    fd : TSocket = INVALID_SOCKET
+
+    rqp  : SUdoIpPacket
+    ansp : SUdoIpPacket
+
+    func Disconnect() ..
+    func WaitSocketReadable(remaining_ms : int32) -> int ..
+    func DoReadWrite(index : uint16, offset : uint32, dataptr : pointer, datalen : uint32, iswrite : bool) -> int ..
+endobject
+
+var udocommh_ip <- OCommHandlerIp()
+
+
+implementation
+
+use time
+
+#ifndef WINDOWS
+struct SPollFd:
+    fd      : TSocket
+    events  : int16
+    revents : int16
+endstruct
+
+const POLLIN : int16 = 0x0001
+func libc_poll(fds : ^SPollFd, nfds : uint, timeout : int32) -> int32  [[external('poll')]] ..
+#endif
+
+func OCommHandlerIp.*Create():
+    use *
+    inherited Create()
+    protocol = ucpIP
+endfunc
+
+func OCommHandlerIp.*Destroy():
+    Disconnect()
+    inherited Destroy()
+endfunc
+
+func OCommHandlerIp.Open()  [[override]]:
+    use *
+    Disconnect()
+
+    var addr : str = ipaddrstr
+    var port : int = UDOIP_DEFAULT_PORT
+    var sep  : int = StrIndexOf(ipaddrstr, ':')
+    if sep >= 0:
+        addr = ipaddrstr[:sep]
+        port = StrToInt(ipaddrstr[sep + 1:], -1)
+    endif
+
+    var init_error : int = SocketInit()
+    if init_error <> 0:
+        raise EUdoAbort(UDOERR_CONNECTION, 'UDO-IP socket initialization failed: {}', [init_error])
+    endif
+
+    var server_addr : TSockAddr = {}
+    if port < 1 or port > 65535  or libc_inet_pton(AF_INET, addr.pchar, %server_addr.sin_addr) <> 1:
+        raise EUdoAbort(UDOERR_CONNECTION, 'Invalid UDO-IP address: {}', [ipaddrstr])
+    endif
+    server_addr.sin_family = AF_INET
+    server_addr.sin_port = libc_htons(port)
+
+    fd = libc_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)
+    if fd == INVALID_SOCKET:
+        raise EUdoAbort(UDOERR_CONNECTION, 'UDO-IP socket creation failed: {}', [SocketError()])
+    endif
+
+    // A connected UDP socket accepts replies from the configured peer only.
+    if libc_connect(fd, %server_addr, SizeOf(server_addr)) <> 0:
+        var err : int = SocketError()
+        Disconnect()
+        raise EUdoAbort(UDOERR_CONNECTION, 'UDO-IP connect to {} failed: {}', [ipaddrstr, err])
+    endif
+    cursqnum = 0
+endfunc
+
+func OCommHandlerIp.Close()  [[override]]:
+    Disconnect()
+endfunc
+
+func OCommHandlerIp.Disconnect():
+    use socket
+    if fd <> INVALID_SOCKET:
+        CloseSocket(fd)
+        fd = INVALID_SOCKET
+    endif
+endfunc
+
+func OCommHandlerIp.Opened() -> bool  [[override]]:
+    return fd <> @socket.INVALID_SOCKET
+endfunc
+
+func OCommHandlerIp.ConnString() -> str  [[override]]:
+    return @.Format('UDO-IP {}', [ipaddrstr])
+endfunc
+
+func OCommHandlerIp.UdoRead(index : uint16, offset : uint32, dataptr : pointer, maxdatalen : uint32) -> int  [[override]]:
+    return DoReadWrite(index, offset, dataptr, maxdatalen, false)
+endfunc
+
+func OCommHandlerIp.UdoWrite(index : uint16, offset : uint32, dataptr : pointer, datalen : uint32)  [[override]]:
+    DoReadWrite(index, offset, dataptr, datalen, true)
+endfunc
+
+func OCommHandlerIp.WaitSocketReadable(remaining_ms : int32) -> int:
+    use *
+    #ifdef WINDOWS
+        var pfd : SWSAPollFd = {fd: fd, events: POLLRDNORM, ?}
+        result = win_WSAPoll(%pfd, 1, remaining_ms)
+    #else
+        var pfd : SPollFd = {fd: fd, events: POLLIN, ?}
+        result = libc_poll(%pfd, 1, remaining_ms)
+    #endif
+endfunc
+
+func OCommHandlerIp.DoReadWrite(index : uint16, offset : uint32, dataptr : pointer, datalen : uint32, iswrite : bool) -> int:
+    use *
+    if not Opened():
+        raise EUdoAbort(UDOERR_CONNECTION, 'UDO-IP socket is closed', [])
+    endif
+    if datalen > UDOIP_MAX_DATALEN:
+        raise EUdoAbort(UDOERR_DATA_TOO_BIG, 'UDO-IP request data is too big: {}', [datalen])
+    endif
+    if max_tries < 1 or timeout_ms < 1 or timeout_ms > 0x7FFFFFFF:
+        raise EUdoAbort(UDOERR_APPLICATION, 'Invalid UDO-IP retry count or timeout', [])
+    endif
+
+    const headsize : int = SizeOf(SUdoIpRqHeader)
+
+    ++cursqnum
+    rqp.header = {rqid: cursqnum,  len_cmd: datalen,  index: index,  offset: offset,  metadata: 0}
+    var rqsize : uint = headsize
+    if iswrite:
+        rqp.header.len_cmd |= 0x8000
+        if datalen > 0:
+            MemCopy(%rqp.data[0], dataptr, datalen)
+        endif
+        rqsize += datalen
+    endif
+
+    for attempt : int = 1 count max_tries:
+        // Keep the request ID on retries so the server can replay its cached reply.
+        if libc_send(fd, %rqp, rqsize, MSG_NOSIGNAL) <> rqsize:
+            raise EUdoAbort(UDOERR_CONNECTION, 'UDO-IP send failed: {}', [SocketError()])
+        endif
+
+        var deadline : int64 = MilliTime() + timeout_ms
+        while true:
+            // Ignore unrelated replies without extending this attempt's deadline.
+            var remaining : int64 = deadline - MilliTime()
+            if remaining <= 0:
+                break
+            endif
+            var ready : int = WaitSocketReadable(remaining)
+            if ready == 0:
+                break  // timeout
+            endif
+            if ready < 0:
+                var err : int = SocketError()
+                if err <> EINTR:
+                    raise EUdoAbort(UDOERR_CONNECTION, 'UDO-IP wait failed: {}', [err])
+                endif
+                continue
+            endif
+
+            // There is something to read from the socket
+            var received : int = libc_recv(fd, %ansp, headsize + ansp.data.length, 0)
+            if received < 0:
+                var err : int = SocketError()
+                if err <> EINTR:
+                    raise EUdoAbort(UDOERR_CONNECTION, 'UDO-IP receive failed: {}', [err])
+                endif
+                continue
+            endif
+            if received < headsize or ansp.header.rqid <> rqp.header.rqid
+                or ansp.header.index <> index or ansp.header.offset <> offset
+            :
+                continue  // this is not the answer we are expecting
+            endif
+
+            var anslen : int = received - headsize
+            if anslen > UDOIP_MAX_DATALEN:
+                raise EUdoAbort(UDOERR_DATA_TOO_BIG, 'UDO-IP response is too big: {}', [anslen])
+            endif
+
+            if ansp.header.len_cmd & 0x7FF == 0x7FF:  // error response ?
+                if anslen < SizeOf(uint16):
+                    raise EUdoAbort(UDOERR_CONNECTION, 'Invalid UDO-IP abort response length: {}', [anslen])
+                endif
+                var ecode : uint16 = ^uint16(%ansp.data[0])^
+                raise EUdoAbort(ecode, 'UDO-IP object {:04X}, offset {}: {}', [index, offset, UdoAbortText(ecode)])
+            endif
+
+            // normal response
+            if iswrite:
+                return 0
+            else:
+                if anslen > datalen:
+                    raise EUdoAbort(UDOERR_DATA_TOO_BIG, 'UDO-IP response is too big: {}', [anslen])
+                endif
+                if anslen > 0:
+                    MemCopy(dataptr, %ansp.data[0], anslen)
+                endif
+                return anslen
+            endif
+        endwhile
+    endfor // try attempts
+
+    result = 0
+    raise EUdoAbort(UDOERR_TIMEOUT, 'UDO-IP object {:04X}, offset {}: timeout', [index, offset])
+endfunc
+

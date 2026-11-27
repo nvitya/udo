@@ -1,0 +1,250 @@
+/*-----------------------------------------------------------------------------
+  This file is a part of the UDO project: https://github.com/nvitya/udo
+  Copyright (c) 2023 Viktor Nagy, nvitya
+
+  This software is provided 'as-is', without any express or implied warranty.
+  In no event will the authors be held liable for any damages arising from
+  the use of this software. Permission is granted to anyone to use this
+  software for any purpose, including commercial applications, and to alter
+  it and redistribute it freely, subject to the following restrictions:
+
+  1. The origin of this software must not be misrepresented; you must not
+     claim that you wrote the original software. If you use this software in
+     a product, an acknowledgment in the product documentation would be
+     appreciated but is not required.
+
+  2. Altered source versions must be plainly marked as such, and must not be
+     misrepresented as being the original software.
+
+  3. This notice may not be removed or altered from any source distribution.
+  ---------------------------------------------------------------------------
+   file:     udocomm.dq
+   brief:    UDO Master communication objects
+   date:     2026-11-27
+   authors:  nvitya
+*/
+
+use ./udo  reexport
+
+object OUdoCommHandler:
+    default_timeout : float32 = 1
+    timeout         : float32 = 1
+    protocol        : NUdoCommProtocol = ucpNone
+
+    func Open()               [[virtual]] ..
+    func Close()              [[virtual]] ..
+    func Opened() -> bool     [[virtual]] ..
+    func ConnString() -> str  [[virtual]] ..
+
+    func UdoRead(index : uint16, offset : uint32, dataptr : pointer, maxdatalen : uint32) -> int  [[virtual]] ..
+    func UdoWrite(index : uint16, offset : uint32, dataptr : pointer, datalen : uint32)           [[virtual]] ..
+endobject
+
+object OUdoComm:
+    commh : OUdoCommHandler
+
+    max_payload_size : uint16 = 64
+
+    func *Create() ..
+    func SetHandler(acommh : OUdoCommHandler) ..
+
+    func Open() ..
+    func Close() ..
+    func Opened() -> bool ..
+
+    func UdoRead(index : uint16, offset : uint32, dataptr : pointer, maxdatalen : uint32) -> int ..
+    func UdoWrite(index : uint16, offset : uint32, dataptr : pointer, datalen : uint32) ..
+
+    func ReadBlob(index : uint16, offset : uint32, dataptr : pointer, maxdatalen : uint32) -> int ..
+    func WriteBlob(index : uint16, offset : uint32, dataptr : pointer, datalen : uint32) ..
+
+    func ReadI32(index : uint16, offset : uint32) -> int32 ..
+    func ReadI16(index : uint16, offset : uint32) -> int16 ..
+    func ReadU32(index : uint16, offset : uint32) -> uint32 ..
+    func ReadU16(index : uint16, offset : uint32) -> uint16 ..
+    func ReadU8(index : uint16, offset : uint32) -> uint8 ..
+    func ReadF32(index : uint16, offset : uint32) -> float32 ..
+
+    func WriteI32(index : uint16, offset : uint32, avalue : int32) ..
+    func WriteI16(index : uint16, offset : uint32, avalue : int16) ..
+    func WriteU32(index : uint16, offset : uint32, avalue : uint32) ..
+    func WriteU16(index : uint16, offset : uint32, avalue : uint16) ..
+    func WriteU8(index : uint16, offset : uint32, avalue : uint8) ..
+    func WriteF32(index : uint16, offset : uint32, avalue : float32) ..
+
+endobject
+
+var commh_none <- OUdoCommHandler()
+var udocomm    <- OUdoComm()
+
+
+implementation
+
+
+func OUdoCommHandler.Open() [[virtual]]:
+    use *
+    raise EUdoAbort(UDOERR_APPLICATION, 'Open: Invalid commhandler', [])
+endfunc
+
+func OUdoCommHandler.Close() [[virtual]]:
+    // does nothing
+endfunc
+
+func OUdoCommHandler.Opened() -> bool [[virtual]]:
+    return false
+endfunc
+
+func OUdoCommHandler.ConnString() -> str [[virtual]]:
+    return 'NONE'
+endfunc
+
+func OUdoCommHandler.UdoRead(index : uint16, offset : uint32, dataptr : pointer, maxdatalen : uint32) -> int [[virtual]]:
+    use *
+    result = 0
+    raise EUdoAbort(UDOERR_APPLICATION, 'UdoRead: Invalid commhandler', [])
+endfunc
+
+func OUdoCommHandler.UdoWrite(index : uint16, offset : uint32, dataptr : pointer, datalen : uint32) [[virtual]]:
+    use *
+    raise EUdoAbort(UDOERR_APPLICATION, 'UdoWrite: Invalid commhandler', [])
+endfunc
+
+//-----------------------------------------------------------------------------
+
+func OUdoComm.*Create():
+    commh = @.commh_none
+endfunc
+
+func OUdoComm.SetHandler(acommh : OUdoCommHandler):
+    if acommh <> nil:
+        commh = acommh
+    else:
+        commh = @.commh_none
+    endif
+endfunc
+
+func OUdoComm.Open():
+    use *
+    if not commh.Opened():
+        commh.Open()
+    endif
+
+    var d32 : uint32 = 0
+    var r   : int
+
+    r = commh.UdoRead(0x0000, 0, %d32, 4)  // check the fix data register first
+    if r <> 4  or d32 <> 0x66CCAA55:
+        commh.Close()
+        raise EUdoAbort(UDOERR_CONNECTION, 'Invalid Obj-0000 response: {:08X}', [d32])
+    endif
+
+    r = commh.UdoRead(0x0001, 0, %d32, 4)  // get the maximal payload length
+    if d32 < 64  or d32 > UDO_MAX_PAYLOAD_LEN:
+        commh.Close()
+        raise EUdoAbort(UDOERR_CONNECTION, 'Invalid maximal payload size: {}', [d32])
+    endif
+
+    max_payload_size = d32
+endfunc
+
+func OUdoComm.Close():
+    commh.Close()
+endfunc
+
+func OUdoComm.Opened() -> bool:
+    return commh.Opened()
+endfunc
+
+func OUdoComm.UdoRead(index : uint16, offset : uint32, dataptr : pointer, maxdatalen : uint32) -> int:
+    result = commh.UdoRead(index, offset, dataptr, maxdatalen)
+    if result <= 8  and result < maxdatalen:
+        // fill up the short reads with zeroes
+        @.MemSet(^byte(dataptr)[result], 0, maxdatalen - result)  // pad smaller responses, todo: sign extension
+    endif
+endfunc
+
+func OUdoComm.UdoWrite(index : uint16, offset : uint32, dataptr : pointer, datalen : uint32):
+    commh.UdoWrite(index, offset, dataptr, datalen)
+endfunc
+
+func OUdoComm.ReadBlob(index : uint16, offset : uint32, dataptr : pointer, maxdatalen : uint32) -> int:
+    var nread : uint32 = 0
+    while nread < maxdatalen:
+        var remaining : uint32 = maxdatalen - nread
+        var chunksize : uint32 = iif(remaining < max_payload_size, remaining, max_payload_size)
+        // Use the raw read so the final short chunk leaves the rest of the buffer untouched.
+        var r : int = commh.UdoRead(index, offset + nread, ^byte(dataptr)[nread], chunksize)
+        if r <= 0:
+            break
+        endif
+        nread += r
+        if r < chunksize:
+            break
+        endif
+    endwhile
+    return nread
+endfunc
+
+func OUdoComm.WriteBlob(index : uint16, offset : uint32, dataptr : pointer, datalen : uint32):
+    var nwritten : uint32 = 0
+    while nwritten < datalen:
+        var remaining : uint32 = datalen - nwritten
+        var chunksize : uint32 = iif(remaining < max_payload_size, remaining, max_payload_size)
+        UdoWrite(index, offset + nwritten, ^byte(dataptr)[nwritten], chunksize)
+        nwritten += chunksize
+    endwhile
+endfunc
+
+func OUdoComm.ReadI32(index : uint16, offset : uint32) -> int32:
+    result = 0
+    commh.UdoRead(index, offset, %result, SizeOf(result))
+endfunc
+
+func OUdoComm.ReadI16(index : uint16, offset : uint32) -> int16:
+    result = 0
+    commh.UdoRead(index, offset, %result, SizeOf(result))
+endfunc
+
+func OUdoComm.ReadU32(index : uint16, offset : uint32) -> uint32:
+    result = 0
+    commh.UdoRead(index, offset, %result, SizeOf(result))
+endfunc
+
+func OUdoComm.ReadU16(index : uint16, offset : uint32) -> uint16:
+    result = 0
+    commh.UdoRead(index, offset, %result, SizeOf(result))
+endfunc
+
+func OUdoComm.ReadU8(index : uint16, offset : uint32) -> uint8:
+    result = 0
+    commh.UdoRead(index, offset, %result, SizeOf(result))
+endfunc
+
+func OUdoComm.ReadF32(index : uint16, offset : uint32) -> float32:
+    result = 0
+    commh.UdoRead(index, offset, %result, SizeOf(result))
+endfunc
+
+func OUdoComm.WriteI32(index : uint16, offset : uint32, avalue : int32):
+    UdoWrite(index, offset, %avalue, SizeOf(avalue))
+endfunc
+
+func OUdoComm.WriteI16(index : uint16, offset : uint32, avalue : int16):
+    UdoWrite(index, offset, %avalue, SizeOf(avalue))
+endfunc
+
+func OUdoComm.WriteU32(index : uint16, offset : uint32, avalue : uint32):
+    UdoWrite(index, offset, %avalue, SizeOf(avalue))
+endfunc
+
+func OUdoComm.WriteU16(index : uint16, offset : uint32, avalue : uint16):
+    UdoWrite(index, offset, %avalue, SizeOf(avalue))
+endfunc
+
+func OUdoComm.WriteU8(index : uint16, offset : uint32, avalue : uint8):
+    UdoWrite(index, offset, %avalue, SizeOf(avalue))
+endfunc
+
+func OUdoComm.WriteF32(index : uint16, offset : uint32, avalue : float32):
+    UdoWrite(index, offset, %avalue, SizeOf(avalue))
+endfunc
